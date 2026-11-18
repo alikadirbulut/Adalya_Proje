@@ -1,9 +1,9 @@
 """Smoke tests for Adalya Paneli roles, registry, import, plate lookup and device inventory.
 
-Run against a DEMO server only (it adds and deletes test records):
+Run against a DEMO server only (it adds and deletes test records; the demo works on copies in data-demo/,
+so the real devices.json and site.json are not touched). Start a fresh demo for each run:
     python adalya_panel.py --demo --no-browser --port 8091
     python tests/api_smoke.py http://127.0.0.1:8091
-Note: demo mode writes device changes to devices.json; run the demo from a copy of the folder.
 """
 import base64, io, json, sys, urllib.request, urllib.error, zipfile
 

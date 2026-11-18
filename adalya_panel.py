@@ -22,6 +22,7 @@ import os
 import random
 import re
 import secrets
+import socket
 import sqlite3
 import threading
 import time
@@ -714,7 +715,8 @@ def r_download(h, qs, user):
     if path not in known_paths or ".." in path:
         raise ValueError("Bu dosya önce Kayıtlar sayfasında aranmalı")
     length, chunks = need_nvr().stream_file(path)
-    name = f"{re.sub(r'[^\w-]+', '-', channel_names().get(ch, f'kanal{ch}')).strip('-')}_kanal{ch}_{os.path.basename(path)}"
+    safe = re.sub(r"[^\w-]+", "-", channel_names().get(ch, f"kanal{ch}")).strip("-")  # kept outside the f-string for Python < 3.12
+    name = f"{safe}_kanal{ch}_{os.path.basename(path)}"
     audit(user, "Kayıt indirdi", f"Kanal {ch} · {path}")
     h.stream(chunks, name, length)
 
@@ -838,6 +840,8 @@ def r_site(h, qs, user):
 
 @route("POST", "/api/memorial/photo", need="admin")
 def r_photo(h, qs, user):
+    if args.demo:
+        return h.json(400, {"error": "Demo modunda fotoğraf değiştirilmez"})
     data = str(h.body(max_bytes=12_000_000).get("data", ""))
     m = re.match(r"^data:image/(jpeg|png|webp);base64,(.+)$", data, re.S)
     if not m:
@@ -2017,10 +2021,33 @@ class Handler(BaseHTTPRequestHandler):
         self.dispatch("POST")
 
 
+class Server(ThreadingHTTPServer):
+    """On Windows, SO_REUSEADDR lets a second server bind a port that is already in use (requests then
+    land on either one at random). Use an exclusive bind there instead, so a busy port is detected."""
+    daemon_threads = True
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def open_server(host, port, fixed):
+    """Bind the requested port; if it is the default and busy, try the next ten."""
+    for p in [port] if fixed else range(port, port + 10):
+        try:
+            return Server((host, p), Handler), p
+        except OSError:
+            if fixed:
+                raise SystemExit(f"Port {p} is already in use (is the panel already running?). Close it or choose another with --port.")
+    raise SystemExit(f"Ports {port}–{port + 9} are all in use. Choose another with --port.")
+
+
 def main():
-    global args, nvr, DATA, DB_PATH, CFG_PATH
+    global args, nvr, DATA, DB_PATH, CFG_PATH, DEVICES, SITE_PATH
     p = argparse.ArgumentParser(description="Adalya Panel")
-    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--port", type=int, default=None, help="default 8080 (or the next free port)")
     p.add_argument("--lan", action="store_true", help="listen on all interfaces (site screens)")
     p.add_argument("--demo", action="store_true", help="simulated site and NVR")
     p.add_argument("--interval", type=float, default=2.0, help="seconds between ping rounds")
@@ -2031,8 +2058,17 @@ def main():
     args = p.parse_args()
 
     if args.demo:
+        # The demo works on fresh copies in data-demo/, so trying it never changes the real
+        # devices.json, site.json or memorial photo (and a fresh clone stays clean).
         DATA = os.path.join(HERE, "data-demo")
         DB_PATH, CFG_PATH = os.path.join(DATA, "panel.db"), os.path.join(DATA, "config.json")
+        os.makedirs(DATA, exist_ok=True)
+        for src, name in ((DEVICES, "devices.json"), (SITE_PATH, "site.json")):
+            dst = os.path.join(DATA, name)
+            if os.path.exists(src):
+                with open(src, "rb") as f, open(dst, "wb") as g:
+                    g.write(f.read())
+        DEVICES, SITE_PATH = os.path.join(DATA, "devices.json"), os.path.join(DATA, "site.json")
     os.makedirs(DATA, exist_ok=True)
     if args.demo and os.path.exists(DB_PATH):
         os.remove(DB_PATH)
@@ -2057,12 +2093,14 @@ def main():
         except (NvrError, NvrAuthError) as e:
             print(f"NVR not connected: {e}")
 
+    srv, port = open_server("0.0.0.0" if args.lan else "127.0.0.1", args.port or 8080, args.port is not None)
     threading.Thread(target=poller, daemon=True).start()
-    srv = ThreadingHTTPServer(("0.0.0.0" if args.lan else "127.0.0.1", args.port), Handler)
-    url = f"http://127.0.0.1:{args.port}"
+    url = f"http://127.0.0.1:{port}"
     print(f"Adalya Panel {VERSION} running at {url}{'  (demo)' if args.demo else ''}")
+    if port != 8080 and args.port is None:
+        print("(port 8080 was busy, so the next free port is used)")
     if args.lan:
-        print(f"Other screens on the site network: http://<this-computer-ip>:{args.port}")
+        print(f"Other screens on the site network: http://<this-computer-ip>:{port}")
     print("Ctrl+C to stop.")
     if not args.no_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()

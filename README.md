@@ -143,15 +143,21 @@ The menu on the left is grouped into four sections.
 
 ## Quick start (demo)
 
-Try every page on your own computer with a simulated site and NVR:
+**Requirements:** Python 3.9 or newer ([python.org](https://www.python.org/downloads/); on Windows tick "Add python.exe to PATH"). Nothing else to install, no packages, no internet needed.
+
+Download the repository (GitHub → **Code → Download ZIP**, then unzip; or `git clone`), then **one command** in that folder:
 
 ```bash
 python adalya_panel.py --demo
 ```
 
-It opens `http://127.0.0.1:8080`. The demo needs no login, makes a few cameras drop now and then like the real problem, and keeps its data separate in `data-demo/`.
+On Windows you can instead **double-click `demo.bat`**. On macOS/Linux use `python3`.
 
-Requirements: Python 3.9 or newer. Nothing else.
+It opens `http://127.0.0.1:8080` in your browser (if 8080 is busy it takes the next free port and prints it). The demo has a simulated NVR, fictional residents with six months of aidat, cameras that drop now and then like the real problem, and a selector at the bottom of the menu to view the panel as Yönetici, Güvenlik or Site sakini. No login.
+
+The demo works on **fresh copies** in `data-demo/` (recreated at every start), so trying it, dragging pins or adding devices never changes the real `devices.json`, `site.json` or memorial photo. Stop it with Ctrl+C (or close the window).
+
+To run it for real instead: `python adalya_panel.py` (this computer only) or `start-panel.bat` (whole site network); see the next section.
 
 ## Running it on site
 
@@ -159,7 +165,7 @@ The short version (full guide: [INSTALL.md](INSTALL.md)):
 
 1. Put the panel on **one always-on computer** in the security room, wired to the switch and on the UPS.
 2. Give it a fixed address (`192.168.0.30`) with a DHCP reservation on the router.
-3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan`). Allow Python through Windows Firewall on private networks.
+3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan --port 8080`). It always uses port 8080 so bookmarks keep working, and says so if that port is taken. It restarts itself if it stops. Allow Python through Windows Firewall on private networks.
 4. Open `http://127.0.0.1:8080` on that computer and **create the first admin account**.
 5. **Ayarlar → NVR bağlantısı**: enter the NVR address, user and password. The password is never saved, so reconnect after each restart.
 6. **Ayarlar → Kullanıcılar**: create an account for each person.
@@ -254,9 +260,9 @@ Edited from **Ayarlar**; you rarely need to touch it by hand.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--demo` | off | Simulated site and NVR, no login, separate data |
+| `--demo` | off | Simulated site and NVR, no login, separate data (copies in `data-demo/`) |
 | `--lan` | off | Listen on the site network, not just this computer |
-| `--port` | `8080` | Web port |
+| `--port` | `8080` | Web port. Without it, a busy 8080 moves to the next free port; with it, a busy port stops with a message |
 | `--interval` | `2` | Seconds between ping rounds |
 | `--misses` | `2` | Missed pings before a device counts as down |
 | `--nvr-user` | | Connect to the NVR at start (asks for the password in the console) |
@@ -338,7 +344,8 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 | `site.json` | Site name, memorial section, map labels, map rotation |
 | `site-plan.webp` | Map background (3D render of the site) |
 | `media/` | Memorial photo |
-| `start-panel.bat` | Start script for the always-on PC |
+| `start-panel.bat` | Start script for the always-on PC (live, site network, port 8080, restarts itself) |
+| `demo.bat` | Double-click to try the demo on Windows |
 | `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, `NEXT-PROMPT.md` | Documents (see above) |
 | `docs/` | README images, the earlier Google aerial view |
 | `tests/api_smoke.py` | Automated checks against a demo server: `python adalya_panel.py --demo --no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`. Run the demo from a copy of the folder: demo mode writes device and map changes to `devices.json`. |
