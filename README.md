@@ -69,16 +69,17 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 
 | | |
 |---|---|
-| ![Bugün](docs/screenshots/bugun.png) **Bugün** · what needs attention now | ![Vardiya ekranı](docs/screenshots/vardiya.png) **Vardiya ekranı** · plate lookup and the camera wall |
+| ![Bugün](docs/screenshots/bugun.png) **Bugün** · what needs attention now | ![Vardiya ekranı](docs/screenshots/vardiya.png) **Vardiya ekranı** · quick guest entry and the 4/6/8/10 camera wall |
 | ![Canlı izleme](docs/screenshots/canli-izleme.jpg) **Canlı izleme** · picture from every camera | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the 3D view of the site |
-| ![Dairem](docs/screenshots/dairem.png) **Dairem** · the resident's phone home | ![Kayıtlar](docs/screenshots/kayitlar.jpg) **Kayıtlar** · find and download recordings |
-| ![Proje](docs/screenshots/proje.jpg) **Proje** · the memorial and the story of the project | |
+| ![Dairem](docs/screenshots/dairem.png) **Dairem** · resident phone home with notifications, cars and requests | ![İstekler](docs/screenshots/talepler.png) **İstekler** · conversation thread and Açık/İşlemde/Kapalı |
+| ![Bildirimler](docs/screenshots/bildirimler.png) **Bildirimler** · announcements and messages on the phone | ![Proje](docs/screenshots/proje.png) **Proje** · the memorial, biography and the story of the project |
+| ![Kayıt formu](docs/screenshots/kayit.png) **Kayıt formu** · public `/kayit`, phone required | ![Daire sayfası](docs/screenshots/daire.png) **Daire sayfası** · people, cars, accounts, requests, aidat |
 
 *Screenshots are from demo mode, so the camera pictures are simulated.*
 
 ## Features, page by page
 
-The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera ve güvenlik**, **Site sakinleri**, **Ödemeler**, **Site işleri**, **Sistem** and **Proje**; residents get a **Site** group with Dairem. The active section header is highlighted, and a group shows the **sum of its sub-item notifications** on the header even when collapsed. A light/dark switch sits at the bottom of the menu (it follows the system until you choose), and **Ara (⌘K / Ctrl+K)** opens a quick search over residents, phones, plates, flats, documents, contracts and announcements. Residents get four large tabs at the bottom on a phone.
+The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera ve güvenlik**, **Site sakinleri**, **Ödemeler**, **Site işleri**, **Sistem** and **Proje**; residents get a **Site** group with Dairem. The active section header is highlighted, and a group shows the **sum of its sub-item notifications** on the header even when collapsed. A light/dark switch sits at the bottom of the menu (it follows the system until you choose), and **Ara (⌘K / Ctrl+K)** opens a quick search over residents, phones, plates, flats, documents, contracts and announcements. Residents get five large tabs at the bottom on a phone (Dairem, Kameralar and Harita when allowed, Bildirimler, Proje).
 
 ### İzleme (monitoring)
 
@@ -97,8 +98,8 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
 | **Mesaj gönder** | **Reminder queue**: prepare one message per overdue flat (with balance, oldest due date and IBAN), optionally automatic on a chosen day of the month, with a send log ("Bekliyor / Gönderildi / İptal") and a WhatsApp button per row. Then pick recipients (all, owners, tenants, flats with overdue aidat, flats with any debt, the flats selected on another page; per blok) and a template (free text, aidat reminder, second aidat notice, monthly aidat notice, payment thank-you, "confirm your details and vehicles", ordinary general assembly invitation). Placeholders such as {bakiye}, {geciken}, {geciken_donem}, {iban} are filled per flat. The panel fills each person's name, flat, phone and vehicles, then gives a **WhatsApp** button per person (opens the chat with the text; you press send), e-mail (per person or BCC in batches) and **printable letters** with a signature list for legal notice (imza karşılığı, at least 15 days before the meeting). Tick the recipients you want and press **Uygulama bildirimi gönder** to deliver the message to those flats' accounts inside the panel and on their phones. |
 | **İstekler** | Requests with a **category** (bakım/onarım, arıza, temizlik, gürültü, araç/otopark, diğer) and an optional **photo** (max 5 MB, admin and owner only — not visible to Güvenlik). Each request is a **conversation**: the resident writes, the management replies, the resident can follow up, and the thread is kept. Statuses are **Açık / İşlemde / Kapalı**; filter by status and category, reply, change status or close. A closed request no longer accepts replies (the resident opens a new one). |
 | **Duyurular** | Announcement board: the manager publishes a duyuru, arıza/kesinti, toplantı or güvenlik notice, pins the important ones, and sees **how many people read it and who**. Residents see unread items highlighted, press **Okudum**, and get an unread badge in the menu and on their phone tabs. Publishing also creates an **in-app notification** for every active resident (bell + phone tab); while the panel/app is open and permission is granted, the phone shows a browser notification. No e-mail or WhatsApp needed for water cuts and elevator outages. |
-| **Aidat ve tahsilat** | Monthly aidat per flat (equal, or a monthly total split by arsa payı), created for a month with one click (never twice). Payments (havale, nakit, kart) close the oldest debt first. Shows this month's charges and collections, total receivable, overdue amounts and flats, the oldest due date, and an estimated late fee (KMK 20, up to 5% a month, only calculated, not charged). Full account statement per flat; wrong entries can be deleted (logged). **Makbuz**: a numbered receipt for any payment (year-00001), printable or saved as PDF from the browser; residents see their own receipts. An optional **payment link** (bank/POS) is shown to residents as "Ödeme yap". **Bank statement import**: upload a CSV (tarih, tutar, açıklama), the panel matches rows to flats by plate, name or "A Blok 3", you correct what it missed, then records them as payments. Bulk actions on selected flats: prepare reminders, write a message, mark paid in full, add an extra charge (repair share, late fee). Settings: amount, due day, late-fee rate, the site's bank account (IBAN), payment link. CSV export. |
-| **Sakin kamera erişimi** | Master switch (off by default) for residents watching cameras. Default access per column: "Tüm sakinler" (shared areas such as the main gate) and per blok (that blok's entrance, elevator, parking); "Kamera adına göre öner" ticks cameras whose name contains the blok. A flat can get its own list in Daireler ve kişiler → Düzenle. Residents get the live picture only; the first view of each camera per day is logged. |
+| **Aidat ve ödemeler** | Monthly aidat per flat (equal, or a monthly total split by arsa payı), created for a month with one click (never twice). Payments (havale, nakit, kart) close the oldest debt first. Shows this month's charges and collections, total receivable, overdue amounts and flats, the oldest due date, and an estimated late fee (KMK 20, up to 5% a month, only calculated, not charged). Full account statement per flat; wrong entries can be deleted (logged). **Makbuz**: a numbered receipt for any payment (year-00001), printable or saved as PDF from the browser; residents see their own receipts. An optional **payment link** (bank/POS) is shown to residents as "Ödeme yap". **Bank statement import**: upload a CSV (tarih, tutar, açıklama), the panel matches rows to flats by plate, name or "A Blok 3", you correct what it missed, then records them as payments. Bulk actions on selected flats: prepare reminders, write a message, mark paid in full, add an extra charge (repair share, late fee). Settings: amount, due day, late-fee rate, the site's bank account (IBAN), payment link. CSV export. |
+| **Sakinlerin kamera izni** | Master switch (off by default) for residents watching cameras. Default access per column: "Tüm sakinler" (shared areas such as the main gate) and per blok (that blok's entrance, elevator, parking); "Kamera adına göre öner" ticks cameras whose name contains the blok. A flat can get its own list in Daireler ve kişiler → Düzenle. Residents get the live picture only; the first view of each camera per day is logged. |
 | **Dairem** (residents) | A phone-first home: greeting, flat chip, one large balance card ("Ödenecek tutar", overdue in amber, IBAN/Ödeme bilgisi and Hareketler buttons), four big tiles (requests, vehicles, aidat history, cameras if allowed), household, **Araçlarım** (the resident can add, edit or remove up to 2 vehicles; the plate stays unique across the site), **guest passes** (name, plate, date and time window — the gate sees them immediately), **parcels** the guard has logged, aidat details and ledger, a form to write to the management, **request threads with replies and follow-ups**, a **Bildirimler** tab with the bell badge, and password change. |
 
 ### Kayıt ve kanıt (recordings and evidence)
@@ -106,7 +107,7 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
 | Page | What you get |
 |---|---|
 | **Kayıtlar** | Pick a camera, date and time range (or "Son 1 saat", "Son 6 saat", "Bugün", "Dün"). Lists the NVR's recording files with size and events. **İndir** downloads a file. |
-| **Olaylar ve loglar** | The panel's own drop history for any date range, and the NVR's own logs (logins, video loss, reboots, disk). Both export to CSV. |
+| **Olay geçmişi** | The panel's own drop history for any date range, and the NVR's own logs (logins, video loss, reboots, disk). Both export to CSV. |
 | **Dışa aktar** | **Full package (zip)** for the last 1/7/30/90 days, quick CSV exports, and the **download log**: who downloaded what and when (admins only), with filters by date, person, action and detail, and **CSV export** of the filtered log (the export itself is logged). |
 
 ### Yönetim (management)
@@ -164,7 +165,15 @@ python adalya_panel.py --demo
 
 On Windows you can instead **double-click `demo.bat`**. On macOS/Linux use `python3`.
 
-It opens `http://127.0.0.1:8080` in your browser (if 8080 is busy it takes the next free port and prints it). The demo has a simulated NVR, fictional residents with six months of aidat, cameras that drop now and then like the real problem, and a selector at the bottom of the menu to view the panel as Yönetici, Güvenlik or Site sakini. No login.
+It opens `http://127.0.0.1:8080` in your browser (if 8080 is busy it takes the next free port and prints it). The demo has a simulated NVR, fictional residents with six months of aidat, cameras that drop now and then like the real problem, two seeded notifications, and a selector at the bottom of the menu to view the panel as Yönetici, Güvenlik or Site sakini. No login.
+
+To try it on a phone on the same Wi-Fi, start it on a fixed port and bind the LAN:
+
+```bash
+python adalya_panel.py --demo --lan --port 3000
+```
+
+Then open on the phone `http://<pc-ip>:3000/demo?role=resident&to=/%23/dairem` (resident), `.../demo?role=staff&to=/%23/vardiya` (guard) or `.../demo?role=admin` (manager). The `/demo` link sets the role cookie and continues to the page; it exists only in demo mode.
 
 The demo works on **fresh copies** in `data-demo/` (recreated at every start), so trying it, dragging pins or adding devices never changes the real `devices.json`, `site.json` or memorial photo. Stop it with Ctrl+C (or close the window).
 
@@ -176,7 +185,7 @@ The short version (full guide: [INSTALL.md](INSTALL.md)):
 
 1. Put the panel on **one always-on computer** in the security room, wired to the switch and on the UPS.
 2. Give it a fixed address (`192.168.0.30`) with a DHCP reservation on the router.
-3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan --port 8080`). It always uses port 8080 so bookmarks keep working, and says so if that port is taken. It restarts itself if it stops. Allow Python through Windows Firewall on private networks.
+3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan --port 8080`, or any other free port such as `--port 3000`). It always uses port 8080 by default so bookmarks keep working, and says so if that port is taken. It restarts itself if it stops. Allow Python through Windows Firewall on private networks.
 4. Open `http://127.0.0.1:8080` on that computer and **create the first admin account**.
 5. **Ayarlar → NVR bağlantısı**: enter the NVR address, user and password. The password is never saved, so reconnect after each restart.
 6. **Ayarlar → Kullanıcılar**: create an account for each person.
@@ -193,7 +202,7 @@ Everyone logs in with their **own username and password**. Their name appears in
 |---|---|
 | **Güvenlik** (watchman, security staff; was "Görevli") | Live view, cameras, map, recordings search and download, logs, exports, maintenance notes, residents' names, phones and vehicles (read only), plate lookup, visitor log, change own password |
 | **Yönetici** (site manager) | Everything above, plus residents registry (add, edit, Excel/CSV import, export), messages to residents, resident requests, device inventory, NVR connection, users, memorial section, map editing, site settings, and the download log |
-| **Site sakini** (resident) | Only their own flat: household, vehicles, **aidat balance and history**, their requests to the management, own password. If the manager allows it, the **live picture** of selected cameras (Canlı izleme and Site haritası show only those). **Never recordings, logs, other devices or other residents.** The account is linked to one flat. |
+| **Site sakini** (resident) | Only their own flat: household, **Araçlarım (add/edit up to 2 vehicles)**, **aidat balance and history**, their requests with the management as a **conversation** (reply/follow up until it is closed), **Bildirimler** (announcements/messages), guest passes, parcels, own password. If the manager allows it, the **live picture** of selected cameras (Canlı izleme and Site haritası show only those). **Never recordings, logs, other devices or other residents.** The account is linked to one flat. |
 
 - KVKK: Güvenlik sees only what the job needs (no e-mail, arsa payı or notes; people with a move-out date are hidden). Every plate lookup, registry export and import is written to the download/action log with who and when.
 - In demo mode a selector at the bottom of the menu lets you view the panel as each role.
@@ -207,7 +216,7 @@ Everyone logs in with their **own username and password**. Their name appears in
 ## If something happens: getting recordings and logs
 
 1. **Bugün**: which camera is down, and since when?
-2. **Olaylar ve loglar**: find the time range of the incident (panel drops and NVR logs).
+2. **Olay geçmişi**: find the time range of the incident (panel drops and NVR logs).
 3. **Kayıtlar**: choose the camera and time, then **İndir** the files. They are Dahua `.dav` files; open them with **Dahua SmartPlayer** (VLC plays most of them).
 4. **Dışa aktar → Tam paket**: download the zip covering those days. It contains:
 
@@ -332,7 +341,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
 - **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons, readable labels and a device card on the maps, collapsible menu, device inventory editor; roles Yönetici / Güvenlik / Site sakini; flats, people and vehicles registry with Excel/CSV import, plate lookup and visitor log; messages (WhatsApp, e-mail, printable letters with signature list); resident requests; aidat and collections with reminders and bulk actions; resident camera access.
 - **Done (18 Nov, Phase C):** yearly calendar of the manager's legal duties with tickable KMK items and dated tasks, contracts and insurance policies with expiry alerts, document archive; "Yaklaşan işler" alerts on the home page.
-- **Done (18 Nov, UI refresh):** new task-first **Bugün** home (attention list, counters, agenda, quick actions), **Vardiya ekranı** for security (plate search + 6-camera wall), phone-first **Dairem** with a large balance card and bottom tabs for residents, calmer type and spacing, 44 px touch targets, plain-language labels, and a reduced menu (technical pages under **Teknik**).
+- **Done (18 Nov, UI refresh):** new task-first **Bugün** home (attention list, counters, agenda, quick actions), **Vardiya ekranı** for security (plate search + camera wall), phone-first **Dairem** with a large balance card and bottom tabs for residents, calmer type and spacing, 44 px touch targets, plain-language labels.
 - **Done (18 Nov, Phase 1 of the roadmap):** announcement board with read receipts and unread badges; resident guest passes that appear instantly in the gate screen; parcel log at the gate and in Dairem; manual light/dark theme; highlighted menu section headers.
 - **Done (18 Nov, Phase 2):** request categories and photos; global search (⌘K) for managers and security; audit log filters and CSV export; daily automatic backups with a tested in-place restore (data/, config, site, devices and uploaded files).
 - **Done (18 Nov, Phase 3):** numbered printable receipts (per year) with resident access to their own; optional payment link for residents; bank statement CSV import with plate/name/flat matching and manual correction.
@@ -341,7 +350,8 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Done (18 Nov, Phase 6):** daily-Turkish menu (Genel, Kamera ve güvenlik, Site sakinleri, Ödemeler, Site işleri, Sistem, Proje); **public registration** at `/kayit` (phone required, e-mail optional, mülk sahibi/kiraci, up to 2 vehicles, 1–2 devices, KVKK consent) with admin approval and **invite links**; per-flat page with people, unlimited vehicles, 2 accounts, requests and aidat; **Kullanıcılar ve cihazlar**; **2-device limit** (install id / device cookie, no MAC); vardiya quick guest entry; arsa payı removed from screens (kept for finance).
 - **Done (18 Nov, Phase 7):** vardiya camera wall selectable 4 / 6 / 8 / 10 (remembered), click a tile for a large live view; menu group headers show the sum of their notifications.
 - **Done (18 Nov, Phase 8):** request **conversations** with Açık / İşlemde / Kapalı statuses and resident follow-ups; **notification center** (bell, phone tab, badge) fed by new announcements and by **Mesaj gönder → Uygulama bildirimi** with ticked recipients; residents can add/edit **up to 2 vehicles**; **Esin Noğan biography** on the Proje page and in Ayarlar; PNG app icons and an install button; `/demo?role=…&to=…` role switch for testing.
-- **Tests:** `tests/api_smoke.py` runs 88 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access, calendar, contracts, documents) against a demo server.
+- **Current build: version 3.0** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
+- **Tests:** `tests/api_smoke.py` runs **204 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.

@@ -66,6 +66,20 @@ Try it at home first with simulated data:
 ```
 python adalya_panel.py --demo
 ```
+For a phone on the same Wi-Fi use a fixed port and `--lan`, then the role links:
+```
+python adalya_panel.py --demo --lan --port 3000
+http://<laptop-ip>:3000/demo?role=resident&to=/%23/dairem
+http://<laptop-ip>:3000/demo?role=staff&to=/%23/vardiya
+```
+Demo checklist before the site day:
+- [ ] **İstekler**: send a request as resident, reply/change status as admin, follow up as resident; close it.
+- [ ] **Bildirimler**: bell/phone tab badge, mark read; publish a Duyuru and send an application message from **Mesaj gönder**.
+- [ ] **Dairem → Araçlarım**: add, edit, remove; third car is refused.
+- [ ] **Vardiya**: 4/6/8/10 wall, click a tile to enlarge; quick guest entry.
+- [ ] **Kayıt istekleri**: submit `/kayit` from the phone, approve on the PC, open the generated invite link.
+- [ ] **Proje**: read the biography and check the memorial dates.
+
 On site, live (opens http://127.0.0.1:8080 in the browser):
 ```
 python adalya_panel.py
@@ -79,7 +93,7 @@ To show it on another screen on the site network: add `--lan`, then open `http:/
 Pages to test against the real NVR (each was tested only against a simulated Dahua NVR so far):
 - [ ] **Canlı izleme**: do the camera tiles show pictures? If all say "Görüntü alınamadı", the NVR's snapshot feature may be off.
 - [ ] **Kayıtlar**: pick Güney çevre 1, today, search. Do files appear? Download one and open it in Dahua SmartPlayer or VLC.
-- [ ] **Olaylar ve loglar → NVR logları**: do log lines appear?
+- [ ] **Olay geçmişi → NVR logları**: do log lines appear?
 - [ ] **Dışa aktar → Tam paket**: does the zip contain `nvr-log.csv`?
 - [ ] **NVR arayüzü**: does the NVR's own page open inside the panel, or only in a new tab?
 - [ ] **Genel bakış → NVR disk**: shows a %? If "?", bring back the `nvr-*` results from step 3.
