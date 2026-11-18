@@ -43,8 +43,8 @@ Find the PC's MAC with `ipconfig /all` (the "Physical Address" of the wired adap
 
 | Who | Role | Can |
 |---|---|---|
-| Watchman / security | Görevli | Watch, search and download recordings, pull logs, write maintenance notes |
-| Manager | Yönetici or Görevli | Yönetici also manages settings, users and sees the download log |
+| Watchman / security | Güvenlik | Watch, search and download recordings, pull logs, write maintenance notes; read-only residents' names, phones, vehicles, plate lookup, visitor log |
+| Manager | Yönetici | Everything, including settings, users, residents, aidat, messages and the download log |
 | You | Yönetici | Everything |
 
 Give each person their username and password privately. They can change their own password under **Ayarlar → Şifrem**. When someone leaves, delete their account.
@@ -63,10 +63,10 @@ If remote access is truly needed, use a **VPN** that only your people can join, 
 
 Copy these to a USB stick or another computer every month, and after big changes:
 
-- `data/` (history, users, maintenance notes, download log)
+- `data/` (history, users, maintenance notes, download log, **belgeler/** uploaded documents)
 - `site.json`, `media/` (memorial section and map labels)
 - `devices.json` (cameras, IPs, channels, map positions)
-- `site-plan.png` (the map image)
+- `site-plan.webp` (the map image)
 
 ## 8. Changing the map image
 

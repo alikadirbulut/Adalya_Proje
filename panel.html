@@ -77,6 +77,23 @@ tr.row { cursor: pointer; } tr.row:hover td, tr.sel td { background: var(--soft)
 .tablewrap { overflow-x: auto; }
 .pill { font-size: 12px; padding: 1px 8px; border-radius: 6px; white-space: nowrap; display: inline-block; }
 .pill.ok { background: var(--ok-bg); } .pill.warn { background: var(--warn-bg); } .pill.bad { background: var(--bad-bg); } .pill.unk { background: var(--soft); color: var(--muted); }
+.cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.calmon { text-align: left; display: block; width: 100%; padding: 8px 10px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; font-weight: 400; }
+.calmon:hover { background: var(--card); }
+.calmon.on { border-color: var(--accent); background: var(--accent-bg); }
+.calmon b { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 3px; }
+.calmon .d { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--muted); padding: 1px 0; }
+.calmon .d.on { color: var(--text); }
+.calmon .d.late { color: var(--bad); }
+.calmon .d.soon { color: var(--warn); }
+.calmon .d span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calmon .d .n { font-variant-numeric: tabular-nums; flex: none; }
+.taskrow { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.taskrow:last-child { border-bottom: 0; }
+.taskrow .grow { flex: 1; min-width: 0; }
+.taskrow.done .grow { opacity: .55; text-decoration: line-through; }
+.taskrow .when { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tpls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .mono { font-family: Consolas, ui-monospace, monospace; font-size: 12px; }
 .empty { padding: 22px; color: var(--muted); text-align: center; }
 .list { border: 1px solid var(--line); border-radius: 8px; max-height: 460px; overflow: auto; }
@@ -234,7 +251,7 @@ const NAV = [
   ["İzleme", true, [["genel", "Genel bakış", "S"], ["canli", "Canlı izleme", "SC"], ["kameralar", "Kameralar", "S"], ["harita", "Site haritası", "SC"], ["ag", "Ağ cihazları", "S"]]],
   ["Kayıt ve kanıt", true, [["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olaylar ve loglar", "S"], ["disa", "Dışa aktar", "S"]]],
   ["Sakinler", false, [["sakinler", "Daireler ve kişiler", "S"], ["aidat", "Aidat ve tahsilat", "A"], ["ziyaret", "Ziyaretçi ve araç", "S"], ["mesaj", "Mesaj gönder", "A"], ["talepler", "Talepler", "A"], ["kamerayetki", "Sakin kamera erişimi", "A"]]],
-  ["Yönetim", false, [["bakim", "Bakım günlüğü", "S"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
+  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
   ["Hakkında", false, [["proje", "Proje", "SR"]]],
 ];
 const ROLE_TR = { admin: "Yönetici", staff: "Güvenlik", resident: "Site sakini" };
@@ -491,12 +508,32 @@ PAGES.genel = {
         <div class="card"><h2>Dikkat isteyenler</h2><div class="list" id="alerts"></div></div>
         <div class="card"><h2>Son olaylar <small>son 24 saat</small></h2><div class="list" id="ev"></div></div>
       </div>
+      ${isAdmin() ? `<div class="card"><h2><span>Yaklaşan işler <small>hukuki tarihler, görevler, sözleşmeler</small></span><a class="btn" href="#/takvim">Takvimi aç</a></h2><div class="list" id="dueList"><div class="empty">Yükleniyor…</div></div></div>` : ""}
       <div class="cards3">
         <div class="card"><h2>Bir olay mı oldu?</h2><p>Kamera ve saati seçip kaydı indirin, olay listesini ve logları alın.</p><div><a class="btn primary" href="#/kayitlar">Kayıt ara</a> <a class="btn" href="#/disa">Dışa aktar</a></div></div>
         <div class="card"><h2>NVR</h2><p id="nvrLine">–</p><div><a class="btn" href="#/nvr">NVR arayüzü</a></div></div>
         <div class="card"><h2>Bakım günlüğü</h2><p>Yapılan her işi buraya yazın; bir sonraki kişi ne yapıldığını görsün.</p><div><a class="btn" href="#/bakim">Not ekle</a></div></div>
       </div>`;
     this.onStatus();
+    this.due();
+  },
+  async due() {
+    if (!isAdmin() || !$("#dueList")) return;
+    try {
+      const a = await api("/api/alerts");
+      const rows = [
+        ...a.contracts.map(c => ({ go: "sozlesmeler", date: c.end_date, title: c.name, kind: "Sözleşme", cls: c.status === "expired" ? "bad" : "warn", left: c.days_left })),
+        ...a.tasks.map(t => ({ go: "takvim", date: t.date, title: t.title, kind: (TASK_KIND_TR[t.kind] || "Görev"), cls: t.days_left < 0 ? "bad" : "warn", left: t.days_left })),
+        ...a.duties.map(d => ({ go: "takvim", date: d.date, title: d.title, kind: d.law, cls: d.days_left < 0 ? "bad" : "", left: d.days_left })),
+      ].sort((x, y) => x.date.localeCompare(y.date));
+      const total = a.counts.contracts + a.counts.tasks + a.counts.duties;
+      $("#dueList").innerHTML = rows.length ? rows.slice(0, 8).map(r =>
+        `<div class="li click" data-due="${r.go}"><span>${esc(r.title)} <span class="hint">${esc(r.kind)}</span></span>
+          <span class="t ${r.cls}">${trDate(r.date)} · ${r.left < 0 ? Math.abs(r.left) + " gün gecikti" : r.left === 0 ? "bugün" : r.left + " gün"}</span></div>`).join("")
+        + (total > 8 ? `<div class="li"><span class="hint">… ve ${total - 8} iş daha</span><a href="#/takvim">Takvim</a></div>` : "")
+        : '<div class="empty">Yaklaşan bir iş yok. Takvimden görev ekleyebilirsiniz.</div>';
+      $$("[data-due]").forEach(el => el.onclick = () => { location.hash = "#/" + el.dataset.due; });
+    } catch (e) { $("#dueList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
   onStatus() {
     const st = S.status; if (!st || !$("#metrics")) return;
@@ -1695,6 +1732,251 @@ PAGES.dairem = {
       if ($("#pNew").value.length < 8) { $("#pErr").textContent = "Yeni şifre en az 8 karakter olmalı."; return; }
       try { await post("/api/me/password", { current: $("#pCur").value, new: $("#pNew").value }); $("#pOk").textContent = "Şifreniz değişti."; $("#pCur").value = $("#pNew").value = ""; } catch (e) { $("#pErr").textContent = e.message; }
     };
+  },
+};
+
+/* ------------------------------------------------------------------ management: calendar, contracts, documents */
+
+const TASK_KIND_TR = { gorev: "Görev", toplanti: "Toplantı", bakim: "Bakım", hukuki: "Hukuki", diger: "Diğer" };
+const CONTRACT_KIND_TR = { sigorta: "Sigorta poliçesi", asansor: "Asansör bakım", temizlik: "Temizlik", guvenlik: "Güvenlik", peyzaj: "Peyzaj / bahçe", bakim: "Genel bakım", diger: "Diğer" };
+const DOC_KIND_TR = { sozlesme: "Sözleşme", police: "Poliçe", karar: "Karar defteri", plan: "Plan / proje", makbuz: "Makbuz", diger: "Diğer" };
+const CONTRACT_STATUS = { valid: ["ok", "Geçerli"], soon: ["warn", "Bitiyor"], expired: ["bad", "Süresi geçti"], none: ["unk", "Tarih yok"] };
+const addDays = (day, n) => { const d = new Date(day + "T00:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
+function dayLeftText(n) { return n == null ? "" : n < 0 ? Math.abs(n) + " gün önce bitti" : n === 0 ? "bugün bitiyor" : n + " gün kaldı"; }
+function itemState(it, today) {
+  if (it.done) return "done";
+  if (it.date < today) return "late";
+  return it.date <= addDays(today, 7) ? "soon" : "";
+}
+
+PAGES.takvim = {
+  year: 0,
+  month: undefined,
+  data: null,
+  render(el) {
+    const now = new Date();
+    if (!this.year) this.year = now.getFullYear();
+    if (this.month === undefined) this.month = this.year === now.getFullYear() ? now.getMonth() + 1 : 1;
+    el.innerHTML = head("Takvim ve görevler", "Hukuki tarihler, yıllık işler ve kendi görevleriniz",
+      `<button id="calPrev" aria-label="Önceki yıl">‹</button><b id="calYear" style="min-width:4.2em;text-align:center;display:inline-block">${this.year}</b><button id="calNext" aria-label="Sonraki yıl">›</button> <button id="calNow">Bu yıl</button>`) + `
+      <div class="info">Bu takvim yöneticiye yardımcı olmak için hazırlanmış bir araçtır; <b>hukuki görüş değildir</b>. Yönetim planı ve avukatınızın görüşü esastır; tarihleri kendi yönetim planınıza göre doğrulayın.</div>
+      <div class="card"><h2>Ay ay <small>bir aya tıklayın</small></h2><div class="cal" id="calGrid"></div></div>
+      <div class="card"><h2 id="calListTitle">İşler</h2><div id="calList"></div></div>
+      <div class="card"><h2>Görev ekle</h2>
+        <div class="form">
+          <div><label for="tkDate">Tarih</label><input id="tkDate" type="date"></div>
+          <div style="flex:1;min-width:220px"><label for="tkTitle">Başlık</label><input id="tkTitle" maxlength="120" placeholder="Örn. Asansör firmasıyla görüş"></div>
+          <div><label for="tkKind">Tür</label><select id="tkKind">${Object.entries(TASK_KIND_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+          <div style="flex:1;min-width:200px"><label for="tkNote">Not (isteğe bağlı)</label><input id="tkNote" maxlength="2000"></div>
+          <button class="primary" id="tkSave">Ekle</button>
+        </div>
+        <div class="err" id="tkErr"></div>
+        <div class="tpls" id="tkTpl"></div>
+      </div>`;
+    $("#calPrev").onclick = () => { this.year--; this.load(); };
+    $("#calNext").onclick = () => { this.year++; this.load(); };
+    $("#calNow").onclick = () => { const d = new Date(); this.year = d.getFullYear(); this.month = d.getMonth() + 1; this.load(); };
+    $("#tkSave").onclick = () => this.save();
+    this.load();
+  },
+  items() {
+    const d = this.data; if (!d) return [];
+    const out = [];
+    d.duties.forEach(x => out.push({ ...x, type: "duty" }));
+    d.tasks.forEach(x => out.push({ ...x, type: "task" }));
+    return out.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "tr"));
+  },
+  async load() {
+    $("#calYear").textContent = this.year;
+    try { this.data = await api("/api/calendar?year=" + this.year); }
+    catch (e) { $("#calList").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    this.templates();
+    this.draw();
+  },
+  templates() {
+    const d = this.data;
+    $("#tkTpl").innerHTML = '<span class="hint">Hazır görevler:</span> ' +
+      (d.templates || []).map(t => `<button data-tpl="${esc(t.key)}">＋ ${esc(t.title)}</button>`).join("");
+    $$("#tkTpl [data-tpl]").forEach(b => b.onclick = () => {
+      const t = d.templates.find(x => x.key === b.dataset.tpl);
+      $("#tkDate").value = t.date; $("#tkTitle").value = t.title; $("#tkKind").value = t.kind;
+      $("#tkTitle").focus();
+    });
+  },
+  draw() {
+    const today = ymd(new Date()), items = this.items();
+    $("#calGrid").innerHTML = MONTHS.map((name, i) => {
+      const m = i + 1, mi = items.filter(x => +x.date.slice(5, 7) === m);
+      const rows = mi.slice(0, 4).map(x => {
+        const st = itemState(x, today);
+        return `<span class="d ${st === "done" ? "" : st}"><span>${esc(x.title)}</span><span class="n">${+x.date.slice(8, 10)}</span></span>`;
+      }).join("");
+      return `<button class="calmon${this.month === m ? " on" : ""}" data-month="${m}"><b>${name} <span class="hint">${mi.length ? mi.length + " iş" : ""}</span></b>${rows || '<span class="d"><span class="hint">–</span></span>'}${mi.length > 4 ? `<span class="d"><span class="hint">+${mi.length - 4} iş</span></span>` : ""}</button>`;
+    }).join("");
+    $$("#calGrid [data-month]").forEach(b => b.onclick = () => { this.month = +b.dataset.month; this.draw(); });
+    const shown = this.month ? items.filter(x => +x.date.slice(5, 7) === this.month) : items;
+    const left = shown.filter(x => !x.done && x.date < today).length;
+    $("#calListTitle").innerHTML = `${this.month ? MONTHS[this.month - 1] + " " + this.year : this.year + " yılı"} işleri
+      <small>${shown.length} kayıt${left ? ` · ${left} gecikmiş` : ""}</small>
+      <button id="calAll">${this.month ? "Tüm yıl" : "Bu ay"}</button>`;
+    $("#calAll").onclick = () => { this.month = this.month ? null : new Date().getMonth() + 1; this.draw(); };
+    $("#calList").innerHTML = shown.length ? shown.map(it => this.row(it, today)).join("") : '<div class="empty">Bu ay için iş yok.</div>';
+    $$("#calList [data-done]").forEach(cb => cb.onchange = async () => {
+      const [type, key] = cb.dataset.done.split(":");
+      try {
+        if (type === "task") await post("/api/calendar/task/done", { id: +key, done: cb.checked });
+        else await post("/api/calendar/duty", { key, year: this.year, done: cb.checked });
+        this.load();
+      } catch (e) { cb.checked = !cb.checked; $("#tkErr").textContent = e.message; }
+    });
+    $$("#calList [data-del]").forEach(b => b.onclick = async () => {
+      if (!confirm("Bu görev silinsin mi?")) return;
+      try { await post("/api/calendar/task/delete", { id: +b.dataset.del }); this.load(); } catch (e) { $("#tkErr").textContent = e.message; }
+    });
+  },
+  row(it, today) {
+    const st = itemState(it, today);
+    const pill = it.type === "task"
+      ? `<span class="pill unk">${esc(TASK_KIND_TR[it.kind] || it.kind)}</span>`
+      : `<span class="pill unk">${esc(it.law)}</span>`;
+    const detail = it.type === "duty" && !it.monthly && it.detail ? `<div class="hint">${esc(it.detail)}</div>` : "";
+    return `<div class="taskrow ${it.done ? "done" : ""}">
+      <input type="checkbox" ${it.done ? "checked" : ""} data-done="${it.type}:${it.type === "task" ? it.id : esc(it.key)}" aria-label="Tamamlandı">
+      <div class="grow"><div>${esc(it.title)} ${pill}</div>${it.note ? `<div class="hint">${esc(it.note)}</div>` : ""}${detail}</div>
+      <div class="when ${st === "late" ? "bad" : st === "soon" ? "warn" : ""}">${trDate(it.date)}${st === "late" ? " · gecikti" : ""}</div>
+      ${it.type === "task" ? `<button data-del="${it.id}" aria-label="Sil">×</button>` : ""}
+    </div>`;
+  },
+  async save() {
+    $("#tkErr").textContent = "";
+    const body = { date: $("#tkDate").value, title: $("#tkTitle").value.trim(), kind: $("#tkKind").value, note: $("#tkNote").value.trim() };
+    if (!body.date) { $("#tkErr").textContent = "Tarih seçin."; return; }
+    if (!body.title) { $("#tkErr").textContent = "Başlık yazın."; return; }
+    try {
+      await post("/api/calendar/task", body);
+      $("#tkTitle").value = ""; $("#tkNote").value = "";
+      this.year = +body.date.slice(0, 4); this.month = +body.date.slice(5, 7);
+      this.load();
+    } catch (e) { $("#tkErr").textContent = e.message; }
+  },
+};
+
+PAGES.sozlesmeler = {
+  docs: [],
+  render(el) {
+    el.innerHTML = head("Sözleşmeler ve poliçeler", "Bitiş tarihleri, tutarlar ve hatırlatmalar",
+      '<button class="primary" id="ctNew">Yeni sözleşme</button>') + `
+      <div class="metrics" id="ctMetrics"></div>
+      <div class="warnbox" id="ctWarn" style="display:none"></div>
+      <div class="card" id="ctForm" style="display:none"></div>
+      <div class="card"><h2>Kayıtlı sözleşmeler</h2><div id="ctList"><div class="empty">Yükleniyor…</div></div></div>`;
+    $("#ctNew").onclick = () => this.form(null);
+    this.load();
+  },
+  form(c) {
+    const f = $("#ctForm");
+    f.style.display = "";
+    f.innerHTML = `<h2>${c ? "Sözleşmeyi düzenle" : "Yeni sözleşme"}</h2>
+      <div class="form">
+        <div style="flex:1;min-width:220px"><label for="ctName">Ad</label><input id="ctName" maxlength="120" value="${esc(c?.name || "")}"></div>
+        <div><label for="ctKind">Tür</label><select id="ctKind">${Object.entries(CONTRACT_KIND_TR).map(([k, v]) => `<option value="${k}" ${c?.kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+        <div><label for="ctProv">Taraf / firma</label><input id="ctProv" maxlength="120" value="${esc(c?.provider || "")}"></div>
+        <div><label for="ctStart">Başlangıç</label><input id="ctStart" type="date" value="${c?.start_date || ""}"></div>
+        <div><label for="ctEnd">Bitiş</label><input id="ctEnd" type="date" value="${c?.end_date || ""}"></div>
+        <div><label for="ctAmt">Tutar (TL)</label><input id="ctAmt" inputmode="decimal" value="${c?.amount || ""}"></div>
+        <div style="flex:1;min-width:180px"><label for="ctNote">Not</label><input id="ctNote" maxlength="2000" value="${esc(c?.note || "")}"></div>
+        <div><label for="ctDoc">Belge</label><select id="ctDoc"><option value="">—</option>${(this.docs || []).map(d => `<option value="${d.id}" ${c?.doc_id === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select></div>
+        <button class="primary" id="ctSave">Kaydet</button><button id="ctCancel">Vazgeç</button>
+      </div><div class="err" id="ctErr"></div>`;
+    $("#ctCancel").onclick = () => { f.style.display = "none"; };
+    $("#ctSave").onclick = async () => {
+      $("#ctErr").textContent = "";
+      const body = { id: c?.id, name: $("#ctName").value.trim(), kind: $("#ctKind").value, provider: $("#ctProv").value.trim(),
+        start_date: $("#ctStart").value, end_date: $("#ctEnd").value, amount: $("#ctAmt").value, note: $("#ctNote").value.trim(),
+        doc_id: +$("#ctDoc").value || null };
+      try { await post("/api/contracts/save", body); f.style.display = "none"; this.load(); } catch (e) { $("#ctErr").textContent = e.message; }
+    };
+    f.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  },
+  async load() {
+    try {
+      const r = await api("/api/contracts");
+      this.docs = r.documents || [];
+      const cs = r.contracts, n = s => cs.filter(c => c.status === s).length;
+      $("#ctMetrics").innerHTML = [
+        ["Geçerli", n("valid"), "ok"], ["30 gün içinde bitiyor", n("soon"), n("soon") ? "warn" : ""],
+        ["Süresi geçmiş", n("expired"), n("expired") ? "bad" : ""], ["Toplam", cs.length, ""],
+      ].map(([l, v, c2]) => `<div class="metric"><div class="l">${l}</div><div class="v ${c2}">${v}</div></div>`).join("");
+      const w = $("#ctWarn");
+      if (n("expired") || n("soon")) {
+        w.style.display = "";
+        w.textContent = `${n("expired") ? n("expired") + " sözleşmenin süresi geçmiş. " : ""}${n("soon") ? n("soon") + " sözleşme 30 gün içinde bitiyor." : ""} Yenileme görüşmesini şimdi başlatın.`;
+      } else w.style.display = "none";
+      $("#ctList").innerHTML = cs.length ? `<div class="tablewrap"><table><thead><tr><th>Ad</th><th>Tür</th><th>Taraf</th><th>Bitiş</th><th style="text-align:right">Tutar</th><th>Durum</th><th>Belge</th><th></th></tr></thead><tbody>
+        ${cs.map(c => `<tr><td><b>${esc(c.name)}</b>${c.note ? `<div class="hint">${esc(c.note)}</div>` : ""}</td><td>${esc(CONTRACT_KIND_TR[c.kind] || c.kind)}</td><td>${esc(c.provider)}</td>
+          <td>${c.end_date ? trDate(c.end_date) : "–"}${c.days_left != null ? `<div class="hint">${esc(dayLeftText(c.days_left))}</div>` : ""}</td>
+          <td style="text-align:right">${c.amount ? TL(c.amount) : "–"}</td>
+          <td><span class="pill ${CONTRACT_STATUS[c.status][0]}">${CONTRACT_STATUS[c.status][1]}</span></td>
+          <td>${c.doc_id ? `<a href="/api/documents/file?id=${c.doc_id}" target="_blank" rel="noopener">${esc(c.doc_name || "Belge")}</a>` : "–"}</td>
+          <td style="white-space:nowrap"><button data-edit="${c.id}">Düzenle</button> <button data-rm="${c.id}">Sil</button></td></tr>`).join("")}</tbody></table></div>`
+        : '<div class="empty">Henüz sözleşme yok. “Yeni sözleşme” ile ekleyin.</div>';
+      $$("#ctList [data-edit]").forEach(b => b.onclick = () => this.form(cs.find(x => x.id === +b.dataset.edit)));
+      $$("#ctList [data-rm]").forEach(b => b.onclick = async () => {
+        if (!confirm("Sözleşme silinsin mi?")) return;
+        try { await post("/api/contracts/delete", { id: +b.dataset.rm }); this.load(); } catch (e) { w.style.display = ""; w.textContent = e.message; }
+      });
+    } catch (e) { $("#ctList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  },
+};
+
+PAGES.belgeler = {
+  render(el) {
+    el.innerHTML = head("Belgeler", "Sözleşmeler, poliçeler, kararlar ve arşiv") + `
+      <div class="info">Belgeler panel bilgisayarının <span class="mono">data/belgeler</span> klasöründe tutulur ve <span class="mono">data/</span> yedeğine dahildir. Yükleme, indirme ve silme işlemleri kayda yazılır. Belgeler kişisel veri içerebilir (KVKK): yalnızca yetkililerle paylaşın.</div>
+      <div class="card"><h2>Belge yükle <small>en fazla 10 MB · PDF, Word, Excel, JPG, PNG, WEBP, TXT</small></h2>
+        <div class="form">
+          <div style="flex:1;min-width:220px"><label for="dcFile">Dosya</label><input id="dcFile" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt"></div>
+          <div style="flex:1;min-width:180px"><label for="dcName">Ad (boşsa dosya adı)</label><input id="dcName" maxlength="120"></div>
+          <div><label for="dcKind">Tür</label><select id="dcKind">${Object.entries(DOC_KIND_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+          <div style="flex:1;min-width:180px"><label for="dcNote">Not</label><input id="dcNote" maxlength="1000"></div>
+          <button class="primary" id="dcGo">Yükle</button>
+        </div><div class="err" id="dcErr"></div><div class="okmsg" id="dcOk"></div>
+      </div>
+      <div class="card"><h2>Arşiv</h2><div id="dcList"><div class="empty">Yükleniyor…</div></div></div>`;
+    $("#dcGo").onclick = () => this.upload();
+    this.load();
+  },
+  upload() {
+    const f = $("#dcFile").files[0];
+    $("#dcErr").textContent = ""; $("#dcOk").textContent = "";
+    if (!f) { $("#dcErr").textContent = "Önce bir dosya seçin."; return; }
+    if (f.size > 10000000) { $("#dcErr").textContent = "Dosya en fazla 10 MB olabilir."; return; }
+    const rd = new FileReader();
+    rd.onload = async () => {
+      try {
+        await post("/api/documents", { name: $("#dcName").value.trim(), kind: $("#dcKind").value, note: $("#dcNote").value.trim(), filename: f.name, data: rd.result });
+        $("#dcOk").textContent = "Belge yüklendi.";
+        $("#dcFile").value = ""; $("#dcName").value = ""; $("#dcNote").value = "";
+        this.load();
+      } catch (e) { $("#dcErr").textContent = e.message; }
+    };
+    rd.onerror = () => { $("#dcErr").textContent = "Dosya okunamadı."; };
+    rd.readAsDataURL(f);
+  },
+  async load() {
+    try {
+      const r = await api("/api/documents");
+      const ds = r.documents;
+      $("#dcList").innerHTML = ds.length ? `<div class="tablewrap"><table><thead><tr><th>Ad</th><th>Tür</th><th>Boyut</th><th>Yükleyen</th><th>Tarih</th><th></th></tr></thead><tbody>
+        ${ds.map(d => `<tr><td><b>${esc(d.name)}</b>${d.note ? `<div class="hint">${esc(d.note)}</div>` : ""}</td><td>${esc(DOC_KIND_TR[d.kind] || d.kind)}</td>
+          <td>${d.size < 1000 ? d.size + " B" : size(d.size)}</td><td>${esc(d.user)}</td><td>${dmhm(d.ts)}</td>
+          <td style="white-space:nowrap"><a class="btn" href="/api/documents/file?id=${d.id}" target="_blank" rel="noopener">İndir</a> <button data-rm="${d.id}">Sil</button></td></tr>`).join("")}</tbody></table></div>`
+        : '<div class="empty">Henüz belge yok. Sözleşmeleri ve poliçeleri buraya yükleyin.</div>';
+      $$("#dcList [data-rm]").forEach(b => b.onclick = async () => {
+        if (!confirm("Belge silinsin mi? Bağlı sözleşmelerdeki belge bağlantısı da kalkar.")) return;
+        try { await post("/api/documents/delete", { id: +b.dataset.rm }); this.load(); } catch (e) { $("#dcErr").textContent = e.message; }
+      });
+    } catch (e) { $("#dcList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
 };
 

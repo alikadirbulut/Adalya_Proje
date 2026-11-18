@@ -83,7 +83,7 @@ The menu on the left is grouped into four sections.
 
 | Page | What you get |
 |---|---|
-| **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. A large site map (click a device for its card: status, ping, drops, live view, details), devices that need attention, recent drops, shortcuts for "something happened". |
+| **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. A large site map (click a device for its card: status, ping, drops, live view, details), devices that need attention, recent drops, shortcuts for "something happened". Admins also get a **Yaklaşan işler** card: upcoming legal dates, open tasks and contracts near expiry. |
 | **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 1.4 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (Esc closes) and jump to its recordings. The enlarged view refreshes **continuously**: the next picture is requested as soon as the last one arrives, up to 4 per second, one request at a time, with the actual frame rate shown next to the camera name. The grid pauses meanwhile, so the NVR load stays about the same. It is near-live, not true video (no sound); see "Live video" under Project status. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
 | **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Each device has an icon for its type (camera, access point, router, switch, NVR, repeater; cameras round, network devices square) coloured by status: green (working), amber (dropped today), red (down), grey (unknown). Clicking a device opens a small card with name, type, IP, channel, status and buttons for live view and details. Admins can drag pins and labels into place and adjust the image rotation. |
@@ -108,6 +108,9 @@ The menu on the left is grouped into four sections.
 
 | Page | What you get |
 |---|---|
+| **Takvim ve görevler** | A year calendar of the manager's KMK duties: işletme projesi (KMK 37), genel kurul invitation at least 15 days ahead, ordinary general assembly in January, annual accounts to the kurul (KMK 39), notary closing of the decision book by end of January (KMK 36), year-end cash/bank reconciliation and monthly elevator maintenance. Each duty can be ticked off for the year (or the month). You add your own dated tasks, with one-click templates for the practical yearly duties (elevator A-type inspection, insurance renewal, İSG, fire extinguishers). The page says plainly that it is a helper, **not legal advice**; the yönetim planı and a lawyer have the final word. |
+| **Sözleşmeler ve poliçeler** | Contracts and insurance policies with provider, start/end dates, amount, note and an attached document. Shows valid / expiring within 30 days / expired, with a renewal warning, and feeds the alert card on Genel bakış. |
+| **Belgeler** | Document archive: upload PDF, Word, Excel, images or text (max 10 MB), with category and note; download and delete. Files are kept in `data/belgeler/`, which is part of the `data/` backup. Uploads, downloads and deletions are written to the audit log. Admin only. |
 | **Bakım günlüğü** | Notes on what was done on site, by whom and when, optionally attached to a device. |
 | **NVR arayüzü** | The Dahua NVR's own web interface inside the panel, with an "open in new tab" button for NVR firmware that refuses to be embedded. |
 | **Ayarlar** | NVR connection, user accounts, the memorial section (text and photo), site name, support contact, map labels, and your own password. |
@@ -138,7 +141,7 @@ The menu on the left is grouped into four sections.
 
 - **Monitoring:** every 2 seconds the panel pings every device in `devices.json`. A device counts as down after 2 missed pings; when it comes back, the drop is saved with its duration. Every 60 seconds it reads the ARP table and checks each IP still belongs to the expected MAC.
 - **NVR:** the panel talks to the NVR over its HTTP API (digest login): device info, disks, channel names, snapshots, recording search (`mediaFileFind`), file download (`RPC_Loadfile`) and logs (`log.cgi`). Every call makes exactly **one** login attempt; if the NVR refuses, the panel stops talking to it so the NVR account can never get locked.
-- **Storage:** SQLite (`data/panel.db`) for drops, notes and the download log; JSON files for users, devices, map and memorial.
+- **Storage:** SQLite (`data/panel.db`) for drops, notes, the download log, residents, aidat, the calendar and contracts; uploaded documents in `data/belgeler/`; JSON files for users, devices, map and memorial.
 - **Frontend:** one HTML file (`panel.html`) with plain JavaScript. It works in any modern browser, on phones too, and follows the device's light or dark mode.
 
 ## Quick start (demo)
@@ -215,7 +218,7 @@ Everyone logs in with their **own username and password**. Their name appears in
 ## Editing the map
 
 - The background is `site-plan.webp` (or `.png` / `.jpg`) in the panel folder, currently a 3D render of the site. To change it, save a new image with that name (only one `site-plan.*` file) and refresh.
-- The browser **rotates** the image (34° by default, so B and C blok sit at the top), **removes a white background** automatically and crops to the site, so the picture fills the map. Both settings are stored in `site.json` → `plan`.
+- The browser **rotates** the image (45° by default, so B and C blok sit at the top), **removes a white background** automatically and crops to the site, so the picture fills the map. Both settings are stored in `site.json` → `plan`.
 - **Site haritası → Haritayı düzenle** (admins): a rotation slider with ±1° buttons and a "remove white background" switch appear; drag cameras, network devices and labels to their real positions. Everything saves automatically: devices to `devices.json`, labels and rotation to `site.json`.
 - **Ayarlar → Site ve harita**: rename, add or remove labels (A blok, B blok, C blok, Bahçe, Havuz…).
 - **Cihaz adları** shows or hides device names as readable labels on a solid background, placed so they don't cover each other or other devices where possible; **Tam ekran** makes the map fill the screen.
@@ -254,7 +257,7 @@ Edited from **Ayarlar**; you rarely need to touch it by hand.
 
 ### `data/`: history and accounts
 
-`panel.db` (drops, notes, download log) and `config.json` (users with hashed passwords, last NVR address). **Back this folder up** and never share it.
+`panel.db` (drops, notes, download log, residents, aidat, calendar, contracts), `belgeler/` (uploaded documents) and `config.json` (users with hashed passwords, last NVR address). **Back this folder up** and never share it.
 
 ## Command-line options
 
@@ -291,7 +294,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Residents and cameras:** off by default. When the manager turns it on, a resident gets the **live picture** of the cameras allowed for their flat only, never recordings, logs, other devices or IP addresses. Do not open cameras that show inside a flat or another flat's door or windows; inform residents in writing (aydınlatma metni), ideally after a kurul decision.
 - **Logged with who and when:** every recording download and export, registry import and export, plate lookup, device change, aidat entry and deletion, message preparation, and each resident's first view of a camera per day.
 - Personal accounts; passwords stored as salted PBKDF2 hashes; sessions expire after 12 hours of inactivity.
-- **Every download and export is logged** with the person's name and time.
+- **Every download and export is logged** with the person's name and time, including document downloads from the archive.
 - The **NVR password is never written to disk**.
 - Recording downloads are limited to files the NVR returned in a search, and the NVR connection is limited to private addresses.
 - Requests from other websites are refused.
@@ -316,12 +319,13 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
 - **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons, readable labels and a device card on the maps, collapsible menu, device inventory editor; roles Yönetici / Güvenlik / Site sakini; flats, people and vehicles registry with Excel/CSV import, plate lookup and visitor log; messages (WhatsApp, e-mail, printable letters with signature list); resident requests; aidat and collections with reminders and bulk actions; resident camera access.
-- **Tests:** `tests/api_smoke.py` runs 58 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access) against a demo server.
+- **Done (18 Nov, Phase C):** yearly calendar of the manager's legal duties with tickable KMK items and dated tasks, contracts and insurance policies with expiry alerts, document archive; "Yaklaşan işler" alerts on Genel bakış.
+- **Tests:** `tests/api_smoke.py` runs 88 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access, calendar, contracts, documents) against a demo server.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
 - **Live video (planned, needs site tests first):** the panel shows NVR snapshots, not video. True live video means taking the NVR's RTSP sub stream (`/cam/realmonitor?channel=N&subtype=1`, port 554) through a small media server on the panel PC (e.g. go2rtc: one pull per camera however many people watch, sub-second delay, playable in the browser), reachable only through the panel so roles and resident camera access still apply. It needs the sub stream in **H.264** (browsers play H.265 unreliably) and a separate view-only NVR user, because the media server must store its login. A cheaper fallback is the NVR's MJPEG stream if this model supports it. The tests that decide it are in ON-SITE-CHECKLIST.md, step 2.4.
-- **Next on the roadmap:** a yearly calendar of the manager's legal duties (Kat Mülkiyeti Kanunu 35–39) with contracts, insurance and documents; meetings and decision book; income and expenses beyond aidat; later an online resident portal kept separate from the camera system (VPN for managers and security, a portal without any camera features for residents). Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
+- **Next on the roadmap:** meetings and decision book (agenda, proxies, quorum by arsa payı and headcount, minutes); income and expenses beyond aidat (işletme projesi, yearly account report, receipts); later an online resident portal kept separate from the camera system (VPN for managers and security, a portal without any camera features for residents). Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
 
 ## Documents
 

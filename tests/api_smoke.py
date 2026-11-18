@@ -157,9 +157,75 @@ check("master switch off blocks residents", call("/api/cam-access", "admin", {**
 call("/api/cam-access", "admin", ca["access"])
 check("staff cannot change camera access", call("/api/cam-access", "staff", {"enabled": True})[0] == 403)
 
+# ---------------------------------------------------------------- Phase C: calendar, contracts, documents
+check("staff cannot read calendar", call("/api/calendar", "staff")[0] == 403)
+check("staff cannot read contracts", call("/api/contracts", "staff")[0] == 403)
+check("resident cannot read documents", call("/api/documents", "resident")[0] == 403)
+c, cal = call("/api/calendar")
+check("calendar has 6 yearly + 12 monthly duties", c == 200 and len(cal["duties"]) == 18, len(cal.get("duties", [])))
+check("calendar has demo tasks and templates", len(cal["tasks"]) >= 3 and len(cal["templates"]) == 4, cal["tasks"])
+year = cal["year"]
+
+c, r = call("/api/calendar/task", "admin", {"date": f"{year}-12-05", "title": "Asansör firmasını ara", "kind": "bakim", "note": "teklif"})
+check("calendar task added", c == 200 and r.get("id"), r)
+tid = r["id"]
+c, cal = call("/api/calendar")
+t = next((x for x in cal["tasks"] if x["id"] == tid), None)
+check("task listed with Turkish text", t and t["title"] == "Asansör firmasını ara" and t["kind"] == "bakim", t)
+check("mark task done", call("/api/calendar/task/done", "admin", {"id": tid, "done": True})[0] == 200)
+c, cal = call("/api/calendar")
+check("task shows done", next(x for x in cal["tasks"] if x["id"] == tid)["done"] is True)
+check("task rejects bad date", call("/api/calendar/task", "admin", {"date": "05.12.2026", "title": "x"})[0] == 400)
+check("task needs a title", call("/api/calendar/task", "admin", {"date": f"{year}-12-06"})[0] == 400)
+
+check("mark duty done", call("/api/calendar/duty", "admin", {"key": "asansor-01", "year": year, "done": True})[0] == 200)
+c, cal = call("/api/calendar")
+check("duty done stored", next(x for x in cal["duties"] if x["key"] == "asansor-01")["done"] is True)
+check("unknown duty refused", call("/api/calendar/duty", "admin", {"key": "yok", "year": year, "done": True})[0] == 400)
+
+c, ct = call("/api/contracts")
+sts = {x["status"] for x in ct["contracts"]}
+check("demo contracts cover valid/soon/expired", {"valid", "soon", "expired"} <= sts, sts)
+
+doc_text = "Adalya demo belgesi — ığüşöç İI"
+doc_b64 = base64.b64encode(doc_text.encode("utf-8")).decode()
+c, d = call("/api/documents", "admin", {"name": "Test belgesi", "kind": "sozlesme", "note": "deneme",
+                                        "filename": "test-belgesi.txt", "data": "data:text/plain;base64," + doc_b64})
+check("document uploaded", c == 200 and d.get("id"), d)
+did = d["id"]
+c, docs = call("/api/documents")
+doc = next((x for x in docs["documents"] if x["id"] == did), None)
+check("document listed with size", doc and doc["size"] == len(doc_text.encode("utf-8")) and doc["filename"].endswith(".txt"), doc)
+c, raw = call(f"/api/documents/file?id={did}")
+check("document downloads identical bytes", c == 200 and raw == doc_text.encode("utf-8"), c)
+check("executable rejected", call("/api/documents", "admin", {"filename": "virus.exe", "data": "aGk="})[0] == 400)
+check("fake pdf rejected", call("/api/documents", "admin", {"filename": "sahte.pdf", "data": "aGk="})[0] == 400)
+
+c, saved = call("/api/contracts/save", "admin", {"name": "Test bakım sözleşmesi", "kind": "asansor", "provider": "Örnek A.Ş.",
+                                                 "start_date": f"{year}-01-01", "end_date": f"{year}-12-31",
+                                                 "amount": "1.500,50", "note": "deneme", "doc_id": did})
+check("contract saved", c == 200 and saved.get("id"), saved)
+cid = saved["id"]
+c, ct = call("/api/contracts")
+con = next(x for x in ct["contracts"] if x["id"] == cid)
+check("contract amount parsed and doc linked", con["amount"] == 1500.5 and con["doc_id"] == did and con["doc_name"] == "Test belgesi", con)
+check("contract end before start refused", call("/api/contracts/save", "admin", {"name": "x", "start_date": f"{year}-06-01", "end_date": f"{year}-01-01"})[0] == 400)
+check("contract needs a name", call("/api/contracts/save", "admin", {"kind": "sigorta"})[0] == 400)
+
+c, al = call("/api/alerts")
+check("alerts summarise duties/tasks/contracts", c == 200 and set(al["counts"]) == {"duties", "tasks", "contracts"}, al.get("counts"))
+
+check("document delete clears contract link", call("/api/documents/delete", "admin", {"id": did})[0] == 200)
+c, ct = call("/api/contracts")
+check("contract keeps but loses doc", next(x for x in ct["contracts"] if x["id"] == cid)["doc_id"] is None)
+check("contract delete", call("/api/contracts/delete", "admin", {"id": cid})[0] == 200)
+c, ct = call("/api/contracts")
+check("contract gone", not any(x["id"] == cid for x in ct["contracts"]))
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}
 check("audit logs plate lookups, imports, devices", {"Plaka sorgusu", "Sakin listesi içe aktarıldı", "Cihaz eklendi", "Cihaz silindi"} <= acts, acts)
+check("audit logs calendar, contracts, documents", {"Takvim", "Sözleşme", "Belge"} <= acts, acts)
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

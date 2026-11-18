@@ -2,7 +2,7 @@
 
 Copy everything below the line into a new session. Replace `<FOLDER>` with where the `adalya-toolkit` folder lives (on my PC it is in `OneDrive\Masaüstü\Esin`). Open the session **in that folder**, not in a temporary one.
 
-*State as of 18 November 2026, commit `8de92c9`.*
+*State as of 18 November 2026, Phase C included (calendar, contracts, documents, UI refresh).*
 
 ---
 
@@ -28,6 +28,7 @@ I'm continuing two connected pieces of work for **Adalya Sitesi** (a residential
 - **Kayıt ve kanıt:** Kayıtlar (search/download from NVR), Olaylar ve loglar, Dışa aktar (zip, audit log).
 - **Sakinler:** Daireler ve kişiler (flats, people malik/kiracı/hane, vehicles; Excel .xlsx/CSV import with preview; CSV export; aidat column with one-click **Hatırlat** via WhatsApp/e-mail; checkboxes + bulk actions), Aidat ve tahsilat (monthly charges equal or by arsa payı, payments close oldest debt first, overdue, estimated KMK 20 late fee, ledger per flat, bulk paid/charge, IBAN settings, CSV), Ziyaretçi ve araç (plate lookup, visitor log), Mesaj gönder (WhatsApp click-to-send, e-mail, printable letters + signature list; templates incl. aidat reminder, second notice, monthly notice, thank-you, details confirmation, genel kurul invitation; recipients incl. overdue / selected flats), Talepler (resident requests), **Sakin kamera erişimi** (master switch, off by default; defaults "Tüm sakinler" + per blok; per-flat override in the flat editor; residents get live picture only, first daily view per camera logged).
 - **Dairem (resident):** own flat, household, vehicles, aidat balance/overdue/history and IBAN, requests to management with answers, password, links to their cameras.
+- **Yönetim (Phase C):** Takvim ve görevler (6 yearly + 12 monthly KMK duties, tickable per year, own tasks + templates; page says it is not legal advice), Sözleşmeler ve poliçeler (valid / 30 gün içinde bitiyor / süresi geçti, linked document), Belgeler (upload/download/delete archive in `data/belgeler/`). Admin only; every change and download logged. Admin "Yaklaşan işler" card on Genel bakış.
 - **Security basics:** personal accounts, PBKDF2, 12 h sessions, login throttle, Origin check on POST, NVR password never saved (one attempt, then stops), audit log for downloads, exports, imports, plate lookups, device and aidat changes, messages.
 
 ## Next tasks (suggested order; ask me before starting a big one)
@@ -47,7 +48,7 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 | A | Roles, flats/people/vehicles, import, plate lookup, visitor log | **Done** |
 | B | Send to residents (WhatsApp, e-mail, letters + signature list) | **Done** |
 | E (part) | Aidat, payments, overdue, late fee, reminders | **Done** |
-| C | Yearly calendar with legal deadlines and alerts (see KMK list below), contracts and insurance policies with expiry dates, document archive | Next |
+| C | Yearly calendar with legal deadlines and alerts (see KMK list below), contracts and insurance policies with expiry dates, document archive | **Done** (18 Nov) |
 | D | Meetings and decision book: agenda, invitation letters (exists in Mesaj gönder), signature list, proxies, quorum by arsa payı and headcount, minutes; notarised paper book stays official, the panel prints the working copy | Later |
 | E (rest) | Income/expense beyond aidat, işletme projesi (KMK 37, yearly estimate → advance per flat; 7-day objection), yearly account report (KMK 39), receipts (makbuz) for payments | Later; ask whether the site already uses accounting software |
 | F | Online resident portal (see task 3) | Depends on the remote-access decision |
@@ -111,11 +112,11 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 
 ### Files
 - `adalya_panel.py` server (routes, monitoring, registry, aidat, camera access), `panel.html` UI (single page, inline SVG icons, no external libraries; works offline), `nvr.py` Dahua client + demo NVR, `adalya_test.py` site toolkit, `devices.json` (devices, NVR channels, map positions), `site.json` (site name, memorial, map labels, map rotation), `media/` (memorial photo), `site-plan.webp` (3D render; rotated in the browser, white background removed, rotation adjustable in map edit mode), `start-panel.bat`, `tests/api_smoke.py`, docs (`README.md`, `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, this file), `docs/` (README images, old Google aerial).
-- Data (never committed): `data/panel.db` (SQLite: events, notes, audit, flats, people, vehicles, visitors, requests, charges, payments, settings, flat_cams), `data/config.json` (users with PBKDF2 hashes, NVR host/user).
+- Data (never committed): `data/panel.db` (SQLite: events, notes, audit, flats, people, vehicles, visitors, requests, charges, payments, settings, flat_cams, calendar_tasks, duty_done, contracts, documents), `data/belgeler/` (uploaded documents), `data/config.json` (users with PBKDF2 hashes, NVR host/user).
 - Deployment plan: one always-on PC at `192.168.0.30` (DHCP reservation) running `start-panel.bat` (`--lan`); everyone uses a browser.
 
 ### Testing
 - Demo: `python adalya_panel.py --demo` or `demo.bat` → `http://127.0.0.1:8080` (next free port if busy; no login, simulated NVR, fictional residents and six months of aidat, role selector in the menu). It works on copies of `devices.json`/`site.json` in `data-demo/`, recreated at each start, so the real files stay untouched.
-- API tests (58 checks: roles and KVKK limits, import CSV/XLSX, plate lookup, visitors, devices, aidat math, resident camera access): start a fresh demo with `--no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`.
+- API tests (88 checks: roles and KVKK limits, import CSV/XLSX, plate lookup, visitors, devices, aidat math, resident camera access, calendar/duties/tasks, contracts, document upload/download/delete, audit): start a fresh demo with `--no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`.
 - Python compatibility: on Python 3.12+ the tokenizer can find f-strings that older Pythons reject (backslash or reused quote inside `{}`); keep the code 3.9-compatible.
 - After big HTML edits: extract the `<script>` from `panel.html` and run `node --check` on it; `python -m py_compile adalya_panel.py`. Then check the pages in the browser (use a separate tab if I'm clicking around in the preview myself).

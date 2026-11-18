@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.0"
+VERSION = "2.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -64,6 +64,13 @@ CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, flat_id INTEGER, da
     note TEXT, user TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS flat_cams (flat_id INTEGER PRIMARY KEY, channels TEXT);
+CREATE TABLE IF NOT EXISTS calendar_tasks (id INTEGER PRIMARY KEY, date TEXT, title TEXT, kind TEXT, note TEXT,
+    done INTEGER DEFAULT 0, user TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS duty_done (duty_key TEXT, year INTEGER, ts REAL, user TEXT, PRIMARY KEY (duty_key, year));
+CREATE TABLE IF NOT EXISTS contracts (id INTEGER PRIMARY KEY, name TEXT, kind TEXT, provider TEXT, start_date TEXT,
+    end_date TEXT, amount REAL, note TEXT, doc_id INTEGER, user TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, name TEXT, kind TEXT, stored TEXT, size INTEGER,
+    note TEXT, user TEXT, ts REAL);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -988,6 +995,400 @@ def r_device_delete(h, qs, user):
     h.json(200, {"ok": True})
 
 
+# ---------------------------------------------------------------- management: calendar, contracts, documents
+# The manager's working tools for the KMK 35-39 duties. They help, they are not legal advice:
+# the yönetim planı and a lawyer have the final word. Contracts and documents are admin-only
+# (they can carry personal data), every change and every download is written to the audit log.
+
+TASK_KINDS = {"gorev": "Görev", "toplanti": "Toplantı", "bakim": "Bakım", "hukuki": "Hukuki", "diger": "Diğer"}
+CONTRACT_KINDS = {"sigorta": "Sigorta poliçesi", "asansor": "Asansör bakım", "temizlik": "Temizlik",
+                  "guvenlik": "Güvenlik", "peyzaj": "Peyzaj / bahçe", "bakim": "Genel bakım", "diger": "Diğer"}
+DOC_KINDS = {"sozlesme": "Sözleşme", "police": "Poliçe", "karar": "Karar defteri", "plan": "Plan / proje",
+             "makbuz": "Makbuz", "diger": "Diğer"}
+
+# Fixed yearly duties: key, month, day, title, law, detail. Keys are stable: completion is stored per key and year.
+LEGAL_DUTIES = [
+    ("isletme", 12, 1, "İşletme projesini (yıllık bütçe) hazırlayın", "KMK 37",
+     "Gelir-gider tahmini ve daire başına avanç. Sahiplerine yazılı bildirin; 7 gün içinde itiraz edilmezse kesinleşir."),
+    ("davet", 1, 16, "Genel kurul davetiyelerini gönderin", "KMK 35",
+     "Toplantıdan en az 15 gün önce, gündemle birlikte imza karşılığı veya taahhütlü posta."),
+    ("kurul", 1, 31, "Olağan genel kurulu yapın", "KMK 35",
+     "Ocak ayı içinde olağan genel kurul; karar yeter sayısı yönetim planına göre hesaplanır."),
+    ("hesap", 1, 31, "Yıllık hesapları kurula sunun", "KMK 39",
+     "Ocak ayında (veya yönetim planındaki tarihte) yıllık hesap raporunu sunun."),
+    ("defter", 1, 31, "Karar defterini noterde kapatın", "KMK 36",
+     "Yıl sonundan sonra en geç bir ay içinde noter kapanışı; kararları tarih sırasıyla ve tüm belgelerle saklayın."),
+    ("mutabakat", 12, 31, "Yıl sonu kasa ve banka mutabakatı", "KMK 35 / 39",
+     "Kasa, banka ve aidat kayıtlarını karşılaştırın; belgeleri arşivleyin."),
+]
+# Duties that come back every month (completion is stored per month: key-AA).
+MONTHLY_DUTIES = [
+    ("asansor", "Asansör aylık bakımı", "Yönetim planı / pratik",
+     "Aylık bakımı yaptırın ve kaydını saklayın. Kırmızı etiket varsa asansörü kullanımdan kaldırın."),
+]
+# One-click task templates for the practical yearly duties that have no fixed date.
+TASK_TEMPLATES = [
+    ("asansor-yillik", "Asansör yıllık A tipi muayene", "bakim", "03-15"),
+    ("sigorta", "Sigorta poliçelerini yenile", "hukuki", "09-01"),
+    ("isg", "İSG risk değerlendirmesi ve çalışan sağlık taraması", "hukuki", "02-01"),
+    ("yangin", "Yangın söndürme cihazlarının yıllık kontrolü", "bakim", "04-01"),
+]
+
+DOC_MAX = 10_000_000
+DOC_EXT = {"pdf": "application/pdf", "txt": "text/plain; charset=utf-8", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+           "png": "image/png", "webp": "image/webp", "doc": "application/msword",
+           "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+           "xls": "application/vnd.ms-excel",
+           "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+DOC_MAGIC = {"pdf": (b"%PDF",), "jpg": (b"\xff\xd8",), "jpeg": (b"\xff\xd8",), "png": (b"\x89PNG",),
+             "webp": (b"RIFF",), "docx": (b"PK",), "xlsx": (b"PK",), "doc": (b"\xd0\xcf\x11\xe0",),
+             "xls": (b"\xd0\xcf\x11\xe0",)}
+
+
+def doc_dir():
+    return os.path.join(DATA, "belgeler")
+
+
+def dparse(s):
+    try:
+        return datetime.strptime(str(s), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def day_diff(s):
+    d = dparse(s)
+    return None if d is None else (d - datetime.now().date()).days
+
+
+def duty_occurrences(year):
+    conn = db()
+    done = {r[0] for r in conn.execute("SELECT duty_key FROM duty_done WHERE year=?", (year,))}
+    conn.close()
+    out = []
+    for key, m, d, title, law, detail in LEGAL_DUTIES:
+        out.append({"key": key, "date": f"{year}-{m:02d}-{d:02d}", "title": title, "law": law,
+                    "detail": detail, "monthly": False, "done": key in done})
+    for key, title, law, detail in MONTHLY_DUTIES:
+        for m in range(1, 13):
+            k = f"{key}-{m:02d}"
+            out.append({"key": k, "date": f"{year}-{m:02d}-01", "title": title, "law": law,
+                        "detail": detail, "monthly": True, "done": k in done})
+    return out
+
+
+def task_rows(conn, year):
+    rows = conn.execute("SELECT id, date, title, kind, note, done, user, ts FROM calendar_tasks "
+                        "WHERE substr(date,1,4)=? ORDER BY date, id", (str(year),)).fetchall()
+    return [{"id": r[0], "date": r[1], "title": r[2], "kind": r[3], "note": r[4] or "",
+             "done": bool(r[5]), "user": r[6] or "", "ts": r[7]} for r in rows]
+
+
+def contract_rows(conn):
+    docs = {r[0]: r[1] for r in conn.execute("SELECT id, name FROM documents")}
+    rows = conn.execute("SELECT id, name, kind, provider, start_date, end_date, amount, note, doc_id, user, ts "
+                        "FROM contracts ORDER BY end_date IS NULL, end_date, name").fetchall()
+    out = []
+    for r in rows:
+        days = day_diff(r[5])
+        if days is None:
+            status = "none"
+        elif days < 0:
+            status = "expired"
+        elif days <= 30:
+            status = "soon"
+        else:
+            status = "valid"
+        out.append({"id": r[0], "name": r[1], "kind": r[2], "provider": r[3] or "", "start_date": r[4] or "",
+                    "end_date": r[5] or "", "amount": r[6] or 0, "note": r[7] or "", "doc_id": r[8],
+                    "doc_name": docs.get(r[8], ""), "user": r[9] or "", "ts": r[10],
+                    "status": status, "days_left": days})
+    return out
+
+
+def document_rows(conn):
+    rows = conn.execute("SELECT id, name, kind, stored, size, note, user, ts FROM documents ORDER BY ts DESC").fetchall()
+    return [{"id": r[0], "name": r[1], "kind": r[2], "size": r[4] or 0, "note": r[5] or "",
+             "user": r[6] or "", "ts": r[7], "filename": r[1] + (os.path.splitext(r[3] or "")[1])} for r in rows]
+
+
+def alerts_payload():
+    """What the manager should not miss: legal dates, open tasks and contracts near expiry."""
+    today = datetime.now().date()
+    year = today.year
+    duties = []
+    for d in duty_occurrences(year):
+        if d["done"]:
+            continue
+        left = (dparse(d["date"]) - today).days
+        if -30 <= left <= 21:
+            duties.append({**d, "days_left": left})
+    duties.sort(key=lambda x: x["date"])
+    conn = db()
+    tasks = []
+    for t in task_rows(conn, year):
+        left = (dparse(t["date"]) - today).days
+        if not t["done"] and -30 <= left <= 30:
+            tasks.append({**t, "days_left": left})
+    tasks.sort(key=lambda x: x["date"])
+    contracts = [c for c in contract_rows(conn) if c["status"] in ("soon", "expired")]
+    conn.close()
+    return {"today": today.isoformat(), "duties": duties[:4], "tasks": tasks[:4], "contracts": contracts[:4],
+            "counts": {"duties": len(duties), "tasks": len(tasks), "contracts": len(contracts)}}
+
+
+@route("GET", "/api/alerts", need="admin")
+def r_alerts(h, qs, user):
+    h.json(200, alerts_payload())
+
+
+@route("GET", "/api/calendar", need="admin")
+def r_calendar(h, qs, user):
+    try:
+        year = int(qs.get("year") or datetime.now().year)
+    except (TypeError, ValueError):
+        raise ValueError("Yıl geçersiz")
+    if not 2000 <= year <= 2100:
+        raise ValueError("Yıl geçersiz")
+    conn = db()
+    tasks = task_rows(conn, year)
+    conn.close()
+    h.json(200, {"year": year, "today": datetime.now().date().isoformat(), "duties": duty_occurrences(year),
+                 "tasks": tasks, "task_kinds": TASK_KINDS, "templates": [
+                     {"key": k, "title": t, "kind": kd, "date": f"{year}-{md}"} for k, t, kd, md in TASK_TEMPLATES]})
+
+
+@route("POST", "/api/calendar/task", need="admin")
+def r_task_save(h, qs, user):
+    b = h.body()
+    date = opt_date(b, "date")
+    if not date:
+        raise ValueError("Tarih gerekli")
+    title = txt(b, "title", 120)
+    if not title:
+        raise ValueError("Başlık gerekli")
+    kind = b.get("kind") if b.get("kind") in TASK_KINDS else "gorev"
+    note = txt(b, "note", 2000)
+    try:
+        tid = int(b.get("id") or 0)
+    except (TypeError, ValueError):
+        tid = 0
+    conn = db()
+    if tid:
+        cur = conn.execute("UPDATE calendar_tasks SET date=?, title=?, kind=?, note=? WHERE id=?",
+                           (date, title, kind, note, tid))
+        if not cur.rowcount:
+            conn.close()
+            raise ValueError("Görev bulunamadı")
+        action = "Takvim görevi düzenlendi"
+    else:
+        tid = conn.execute("INSERT INTO calendar_tasks (date, title, kind, note, done, user, ts) VALUES (?,?,?,?,0,?,?)",
+                           (date, title, kind, note, user["name"], time.time())).lastrowid
+        action = "Takvim görevi eklendi"
+    conn.commit()
+    conn.close()
+    audit(user, "Takvim", f"{action}: {date} {title}")
+    h.json(200, {"ok": True, "id": tid})
+
+
+@route("POST", "/api/calendar/task/done", need="admin")
+def r_task_done(h, qs, user):
+    b = h.body()
+    conn = db()
+    r = conn.execute("SELECT title FROM calendar_tasks WHERE id=?", (b.get("id"),)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Görev bulunamadı")
+    done = 1 if b.get("done") else 0
+    conn.execute("UPDATE calendar_tasks SET done=? WHERE id=?", (done, b.get("id")))
+    conn.commit()
+    conn.close()
+    audit(user, "Takvim", f"Görev {'tamamlandı' if done else 'yeniden açıldı'}: {r[0]}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/calendar/task/delete", need="admin")
+def r_task_delete(h, qs, user):
+    return delete_row(h, user, "calendar_tasks", "title", "Takvim görevi silindi")
+
+
+@route("POST", "/api/calendar/duty", need="admin")
+def r_duty_done(h, qs, user):
+    b = h.body()
+    key = txt(b, "key", 40)
+    try:
+        year = int(b.get("year"))
+    except (TypeError, ValueError):
+        raise ValueError("Yıl geçersiz")
+    if not key or not 2000 <= year <= 2100:
+        raise ValueError("Kayıt geçersiz")
+    valid = {d["key"] for d in duty_occurrences(year)}
+    if key not in valid:
+        raise ValueError("Bu tarih takvimde yok")
+    conn = db()
+    if b.get("done"):
+        conn.execute("INSERT OR REPLACE INTO duty_done (duty_key, year, ts, user) VALUES (?,?,?,?)",
+                     (key, year, time.time(), user["name"]))
+    else:
+        conn.execute("DELETE FROM duty_done WHERE duty_key=? AND year=?", (key, year))
+    conn.commit()
+    conn.close()
+    audit(user, "Takvim", f"{'Tamamlandı' if b.get('done') else 'Geri alındı'}: {key} ({year})")
+    h.json(200, {"ok": True})
+
+
+@route("GET", "/api/contracts", need="admin")
+def r_contracts(h, qs, user):
+    conn = db()
+    data = {"contracts": contract_rows(conn), "kinds": CONTRACT_KINDS,
+            "documents": [{"id": d["id"], "name": d["name"]} for d in document_rows(conn)]}
+    conn.close()
+    h.json(200, data)
+
+
+@route("POST", "/api/contracts/save", need="admin")
+def r_contract_save(h, qs, user):
+    b = h.body()
+    name = txt(b, "name", 120)
+    if not name:
+        raise ValueError("Sözleşme adı gerekli")
+    kind = b.get("kind") if b.get("kind") in CONTRACT_KINDS else "diger"
+    provider = txt(b, "provider", 120)
+    start = opt_date(b, "start_date")
+    end = opt_date(b, "end_date")
+    if start and end and start > end:
+        raise ValueError("Bitiş tarihi başlangıçtan önce olamaz")
+    amount = money(b.get("amount") or 0, "Tutar") if str(b.get("amount") or "").strip() else 0
+    note = txt(b, "note", 2000)
+    doc_id = None
+    if b.get("doc_id"):
+        try:
+            doc_id = int(b["doc_id"])
+        except (TypeError, ValueError):
+            raise ValueError("Belge seçimi geçersiz")
+    try:
+        cid = int(b.get("id") or 0)
+    except (TypeError, ValueError):
+        cid = 0
+    conn = db()
+    if doc_id and not conn.execute("SELECT 1 FROM documents WHERE id=?", (doc_id,)).fetchone():
+        conn.close()
+        raise ValueError("Belge bulunamadı")
+    if cid:
+        cur = conn.execute("UPDATE contracts SET name=?, kind=?, provider=?, start_date=?, end_date=?, amount=?, note=?, doc_id=? WHERE id=?",
+                           (name, kind, provider, start, end, amount, note, doc_id, cid))
+        if not cur.rowcount:
+            conn.close()
+            raise ValueError("Sözleşme bulunamadı")
+        action = "Sözleşme düzenlendi"
+    else:
+        cid = conn.execute("INSERT INTO contracts (name, kind, provider, start_date, end_date, amount, note, doc_id, user, ts) "
+                           "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                           (name, kind, provider, start, end, amount, note, doc_id, user["name"], time.time())).lastrowid
+        action = "Sözleşme eklendi"
+    conn.commit()
+    conn.close()
+    audit(user, "Sözleşme", f"{action}: {name}" + (f" · bitiş {end}" if end else ""))
+    h.json(200, {"ok": True, "id": cid})
+
+
+@route("POST", "/api/contracts/delete", need="admin")
+def r_contract_delete(h, qs, user):
+    return delete_row(h, user, "contracts", "name", "Sözleşme silindi")
+
+
+def decode_doc(b):
+    """A document arrives as base64 in JSON (same idea as the memorial photo: no multipart parser)."""
+    import base64
+    raw = str(b.get("data") or "")
+    m = re.match(r"^data:([\w/+.-]+);base64,(.*)$", raw, re.S)
+    if m:
+        raw = m.group(2)
+    try:
+        data = base64.b64decode(raw, validate=False)
+    except (ValueError, TypeError):
+        raise ValueError("Dosya okunamadı")
+    if not data:
+        raise ValueError("Dosya boş")
+    if len(data) > DOC_MAX:
+        raise ValueError("Dosya en fazla 10 MB olabilir")
+    fname = os.path.basename(str(b.get("filename") or "").replace("\\", "/")).strip()[:120]
+    ext = os.path.splitext(fname)[1].lstrip(".").lower()
+    if ext not in DOC_EXT:
+        raise ValueError("Bu dosya türü desteklenmiyor (PDF, Word, Excel, JPG, PNG, WEBP, TXT)")
+    magic = DOC_MAGIC.get(ext)
+    if magic and not data.startswith(magic):
+        raise ValueError("Dosya içeriği uzantısıyla uyuşmuyor")
+    return data, fname or f"belge.{ext}", ext
+
+
+@route("GET", "/api/documents", need="admin")
+def r_documents(h, qs, user):
+    conn = db()
+    data = {"documents": document_rows(conn), "kinds": DOC_KINDS, "max_mb": DOC_MAX // 1_000_000}
+    conn.close()
+    h.json(200, data)
+
+
+@route("POST", "/api/documents", need="admin")
+def r_document_add(h, qs, user):
+    b = h.body(max_bytes=16_000_000)
+    data, fname, ext = decode_doc(b)
+    name = txt(b, "name", 120) or os.path.splitext(fname)[0][:120]
+    kind = b.get("kind") if b.get("kind") in DOC_KINDS else "diger"
+    note = txt(b, "note", 1000)
+    os.makedirs(doc_dir(), exist_ok=True)
+    conn = db()
+    did = conn.execute("INSERT INTO documents (name, kind, stored, size, note, user, ts) VALUES (?,?,?,?,?,?,?)",
+                       (name, kind, "", 0, note, user["name"], time.time())).lastrowid
+    stored = f"{did}-{secrets.token_hex(6)}.{ext}"
+    with open(os.path.join(doc_dir(), stored), "wb") as f:
+        f.write(data)
+    conn.execute("UPDATE documents SET stored=?, size=? WHERE id=?", (stored, len(data), did))
+    conn.commit()
+    conn.close()
+    audit(user, "Belge", f"Belge yüklendi: {name} ({fname}, {len(data)} bayt)")
+    h.json(200, {"ok": True, "id": did})
+
+
+@route("GET", "/api/documents/file", need="admin")
+def r_document_file(h, qs, user):
+    conn = db()
+    r = conn.execute("SELECT name, kind, stored, size FROM documents WHERE id=?", (qs.get("id"),)).fetchone()
+    conn.close()
+    if not r:
+        raise ValueError("Belge bulunamadı")
+    p = os.path.join(doc_dir(), os.path.basename(r[2] or ""))
+    if not r[2] or not os.path.isfile(p):
+        raise ValueError("Belge dosyası diskte yok")
+    ext = os.path.splitext(r[2])[1].lstrip(".").lower()
+    with open(p, "rb") as f:
+        data = f.read()
+    audit(user, "Belge indirme", r[0])
+    h.download(data, f"{r[0]}.{ext}", DOC_EXT.get(ext, "application/octet-stream"))
+
+
+@route("POST", "/api/documents/delete", need="admin")
+def r_document_delete(h, qs, user):
+    did = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT name, stored FROM documents WHERE id=?", (did,)).fetchone()
+    if not r:
+        conn.close()
+        return h.json(404, {"error": "Belge bulunamadı"})
+    conn.execute("DELETE FROM documents WHERE id=?", (did,))
+    conn.execute("UPDATE contracts SET doc_id=NULL WHERE doc_id=?", (did,))
+    conn.commit()
+    conn.close()
+    try:
+        if r[1]:
+            os.remove(os.path.join(doc_dir(), os.path.basename(r[1])))
+    except OSError:
+        pass
+    audit(user, "Belge", f"Belge silindi: {r[0]}")
+    h.json(200, {"ok": True})
+
+
 # ---------------------------------------------------------------- residents registry (KVKK: personal data)
 
 KINDS = {"malik": "Malik", "kiraci": "Kiracı", "hane": "Hane üyesi"}
@@ -1516,6 +1917,46 @@ def seed_demo_registry():
     conn.commit()
     conn.close()
     put_setting("cam_access", {"enabled": True, "all": [3], "blok": suggest_cam_access(["A", "B", "C"])})
+
+
+def seed_demo_management():
+    """Fictional contracts, tasks and one document, demo mode only (data-demo/, recreated at start)."""
+    today = datetime.now().date()
+    day = lambda n: (today + timedelta(days=n)).isoformat()
+    now = time.time()
+    bdir = doc_dir()
+    os.makedirs(bdir, exist_ok=True)
+    text = ("ADALYA SİTESİ (DEMO) - Asansör bakım sözleşmesi özeti\n\n"
+            "Bu dosya demo modunda üretilmiştir; gerçek bir sözleşme değildir.\n"
+            "Kapsam: aylık bakım, yıllık A tipi muayene, acil servis.\n")
+    conn = db()
+    did = conn.execute("INSERT INTO documents (name, kind, stored, size, note, user, ts) VALUES (?,?,?,?,?,?,?)",
+                       ("Asansör bakım sözleşmesi (demo)", "sozlesme", "", 0, "Demo belgesi", "Demo", now)).lastrowid
+    stored = f"{did}-demo.txt"
+    with open(os.path.join(bdir, stored), "w", encoding="utf-8") as f:
+        f.write(text)
+    conn.execute("UPDATE documents SET stored=?, size=? WHERE id=?", (stored, len(text.encode("utf-8")), did))
+    rows = [
+        ("Asansör bakım sözleşmesi", "asansor", "Demo Asansör A.Ş.", day(-200), day(160), 18000, "Aylık bakım + yıllık A tipi muayene", did),
+        ("Site sigorta poliçesi", "sigorta", "Demo Sigorta", day(-345), day(20), 42500, "Yangın, deprem ve sorumluluk", None),
+        ("Temizlik hizmeti sözleşmesi", "temizlik", "Demo Temizlik Ltd.", day(-371), day(-6), 96000, "Ortak alanlar, haftada 6 gün", None),
+    ]
+    for r in rows:
+        conn.execute("INSERT INTO contracts (name, kind, provider, start_date, end_date, amount, note, doc_id, user, ts) "
+                     "VALUES (?,?,?,?,?,?,?,?,?,?)", (*r, "Demo", now))
+    for date, title, kind, note, done in [
+        (day(5), "Asansör yıllık A tipi muayene randevusu", "bakim", "Yetkili firmadan teyit bekleniyor.", 0),
+        (day(-3), "Kombi bakım teklifi karşılaştır", "gorev", "", 0),
+        (day(12), "Genel kurul gündemini hazırla", "toplanti", "", 0),
+        (day(-40), "Karar defteri noter kapanışı", "hukuki", "Tamamlandı.", 1),
+    ]:
+        conn.execute("INSERT INTO calendar_tasks (date, title, kind, note, done, user, ts) VALUES (?,?,?,?,?,?,?)",
+                     (date, title, kind, note, done, "Demo", now))
+    for key in ("defter", "isletme"):
+        conn.execute("INSERT OR REPLACE INTO duty_done (duty_key, year, ts, user) VALUES (?,?,?,?)",
+                     (key, today.year, now, "Demo"))
+    conn.commit()
+    conn.close()
 
 
 # ---------------------------------------------------------------- settings stored in the database (data/, never committed)
@@ -2072,12 +2513,21 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     if args.demo and os.path.exists(DB_PATH):
         os.remove(DB_PATH)
+    if args.demo:
+        bdir = os.path.join(DATA, "belgeler")
+        if os.path.isdir(bdir):
+            for n in os.listdir(bdir):
+                try:
+                    os.remove(os.path.join(bdir, n))
+                except OSError:
+                    pass
     load_cfg()
     load_site()
     load_devices()
     db().close()
     if args.demo:
         seed_demo_registry()
+        seed_demo_management()
 
     if args.demo:
         nvr = DemoNvr(channel_names())
