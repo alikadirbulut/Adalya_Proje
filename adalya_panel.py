@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.6"
+VERSION = "2.7"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS budget_lines (id INTEGER PRIMARY KEY, budget_id INTEG
     amount REAL, note TEXT);
 CREATE TABLE IF NOT EXISTS cash (id INTEGER PRIMARY KEY, date TEXT, kind TEXT, category TEXT, label TEXT,
     amount REAL, note TEXT, user TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, ts REAL, flat_id INTEGER, channel TEXT, subject TEXT,
+    message TEXT, status TEXT DEFAULT 'bekliyor', sent_ts REAL, sent_by TEXT, user TEXT);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -105,7 +107,59 @@ cfg = {}
 site = {}
 nvr = None
 nvr_state = {"info": None, "error": None, "checked": None}
-login_fail = {"count": 0, "until": 0.0}
+login_fail = {}
+pending_logins = {}
+LOGIN_MAX, LOGIN_LOCK = 5, 30
+IP_MAX, IP_LOCK = 25, 300
+
+
+def login_blocked(ip, username):
+    now = time.time()
+    for key in (f"u:{ip}|{username}", f"ip:{ip}"):
+        rec = login_fail.get(key)
+        if rec and rec["until"] > now:
+            return int(rec["until"] - now)
+    return 0
+
+
+def login_bad(ip, username):
+    now = time.time()
+    for key, maxn, lock in ((f"u:{ip}|{username}", LOGIN_MAX, LOGIN_LOCK), (f"ip:{ip}", IP_MAX, IP_LOCK)):
+        rec = login_fail.setdefault(key, {"count": 0, "until": 0.0})
+        rec["count"] += 1
+        if rec["count"] >= maxn:
+            rec.update(count=0, until=now + lock)
+    if len(login_fail) > 3000:
+        for k in [k for k, v in login_fail.items() if v["until"] < now - 3600]:
+            login_fail.pop(k, None)
+
+
+def login_ok(ip, username):
+    login_fail.pop(f"u:{ip}|{username}", None)
+
+
+def _b32(secret):
+    import base64
+    s = secret.upper().strip()
+    return base64.b32decode(s + "=" * ((8 - len(s) % 8) % 8))
+
+
+def totp_code(secret, at=None, step=30, digits=6):
+    import struct
+    counter = int((at or time.time()) // step)
+    digest = hmac.new(_b32(secret), struct.pack(">Q", counter), hashlib.sha1).digest()
+    off = digest[-1] & 0x0F
+    return str((struct.unpack(">I", digest[off:off + 4])[0] & 0x7FFFFFFF) % (10 ** digits)).zfill(digits)
+
+
+def totp_verify(secret, code):
+    code = re.sub(r"\D", "", str(code or ""))
+    if len(code) != 6 or not secret:
+        return False
+    now = time.time()
+    return any(hmac.compare_digest(totp_code(secret, now + w), code) for w in (-30, 0, 30))
+
+
 started = time.time()
 args = None
 
@@ -507,20 +561,89 @@ def r_setup(h, qs, user):
 @route("POST", "/api/login", need="none")
 def r_login(h, qs, user):
     now = time.time()
-    if login_fail["until"] > now:
-        return h.json(429, {"error": f"Çok fazla hatalı deneme. {int(login_fail['until'] - now)} sn sonra tekrar deneyin."})
     b = h.body()
-    username, pw = str(b.get("username", "")).strip().lower(), str(b.get("password", ""))
+    username = str(b.get("username", "")).strip().lower()
+    pw = str(b.get("password", ""))
+    ip = h.client_address[0]
+    wait = login_blocked(ip, username)
+    if wait:
+        return h.json(429, {"error": f"Çok fazla hatalı deneme. {wait} sn sonra tekrar deneyin."})
     rec = cfg["users"].get(username)
     if not rec or not check_pw(pw, rec.get("pw")):
-        login_fail["count"] += 1
-        if login_fail["count"] >= 5:
-            login_fail.update(count=0, until=now + 30)
+        login_bad(ip, username)
         return h.json(401, {"error": "Kullanıcı adı veya şifre hatalı"})
-    login_fail["count"] = 0
+    login_ok(ip, username)
+    if rec.get("totp_on") and rec.get("totp_secret"):
+        if len(pending_logins) > 500:
+            for k in [k for k, v in pending_logins.items() if v["exp"] < now]:
+                pending_logins.pop(k, None)
+        pend = secrets.token_urlsafe(24)
+        pending_logins[pend] = {"username": username, "exp": now + 300}
+        return h.json(200, {"twofa": True, "pending": pend})
     u = {"username": username, "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id")}
     h.start_session(u)
     audit(u, "Giriş", "")
+
+
+@route("POST", "/api/login/2fa", need="none")
+def r_login_2fa(h, qs, user):
+    b = h.body()
+    pend = str(b.get("pending") or "")
+    rec_p = pending_logins.get(pend)
+    if not rec_p or rec_p["exp"] < time.time():
+        pending_logins.pop(pend, None)
+        raise ValueError("Doğrulama süresi doldu; yeniden giriş yapın")
+    username = rec_p["username"]
+    rec = cfg["users"].get(username)
+    if not rec or not totp_verify(rec.get("totp_secret"), b.get("code")):
+        return h.json(401, {"error": "Kod hatalı"})
+    pending_logins.pop(pend, None)
+    u = {"username": username, "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id")}
+    h.start_session(u)
+    audit(u, "Giriş", "iki adımlı doğrulama")
+
+
+@route("POST", "/api/me/2fa/setup", need="admin")
+def r_2fa_setup(h, qs, user):
+    import base64
+    rec = cfg["users"].get(user["username"])
+    if not rec:
+        raise ValueError("Kullanıcı bulunamadı")
+    secret = base64.b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+    rec["totp_secret"] = secret
+    rec["totp_on"] = False
+    save_cfg()
+    issuer = site["site_name"]
+    uri = (f"otpauth://totp/{quote(issuer)}:{quote(user['username'])}?secret={secret}"
+           f"&issuer={quote(issuer)}&digits=6&period=30")
+    h.json(200, {"ok": True, "secret": secret, "uri": uri})
+
+
+@route("POST", "/api/me/2fa/enable", need="admin")
+def r_2fa_enable(h, qs, user):
+    rec = cfg["users"].get(user["username"])
+    if not rec or not rec.get("totp_secret"):
+        raise ValueError("Önce kurulumu başlatın")
+    if not totp_verify(rec["totp_secret"], h.body().get("code")):
+        raise ValueError("Kod hatalı; telefonunuzdaki güncel kodu girin")
+    rec["totp_on"] = True
+    save_cfg()
+    audit(user, "Güvenlik", "İki adımlı doğrulama açıldı")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/me/2fa/disable", need="admin")
+def r_2fa_disable(h, qs, user):
+    rec = cfg["users"].get(user["username"])
+    if not rec:
+        raise ValueError("Kullanıcı bulunamadı")
+    if not check_pw(h.body().get("password", ""), rec.get("pw")):
+        raise ValueError("Şifre hatalı")
+    rec.pop("totp_secret", None)
+    rec.pop("totp_on", None)
+    save_cfg()
+    audit(user, "Güvenlik", "İki adımlı doğrulama kapatıldı")
+    h.json(200, {"ok": True})
 
 
 @route("GET", "/api/users", need="admin")
@@ -590,7 +713,7 @@ def r_my_password(h, qs, user):
 @route("POST", "/api/logout", need="none")
 def r_logout(h, qs, user):
     sessions.pop(h.cookie_token(), None)
-    h.json(200, {"ok": True}, {"Set-Cookie": "adalya_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+    h.json(200, {"ok": True}, {"Set-Cookie": f"adalya_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{h.cookie_secure()}"})
 
 
 @route("GET", "/api/status")
@@ -989,6 +1112,51 @@ def plan_file():
         if os.path.isfile(p):
             return p, ctype
     return None, None
+
+
+@route("GET", "/manifest.webmanifest", need="none")
+def r_manifest(h, qs, user):
+    data = {"name": site["site_name"], "short_name": "Adalya", "start_url": "/", "scope": "/",
+            "display": "standalone", "background_color": "#f7f6f3", "theme_color": "#1d5f8a", "lang": "tr",
+            "description": "Adalya Sitesi yönetim paneli",
+            "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
+    h.raw(200, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/manifest+json")
+
+
+@route("GET", "/icon.svg", need="none")
+def r_icon(h, qs, user):
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">'
+           '<rect width="192" height="192" rx="44" fill="#1d2f28"/>'
+           '<g fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">'
+           '<rect x="44" y="62" width="72" height="66" rx="14"/>'
+           '<path d="m116 86 32-19v58l-32-19"/>'
+           '<circle cx="80" cy="95" r="14"/></g></svg>')
+    h.raw(200, svg.encode("utf-8"), "image/svg+xml")
+
+
+@route("GET", "/sw.js", need="none")
+def r_sw(h, qs, user):
+    js = """
+const CACHE = "adalya-v1";
+self.addEventListener("install", (e) => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/icon.svg", "/manifest.webmanifest"])).catch(() => {}));
+});
+self.addEventListener("activate", (e) => {
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
+  self.clients.claim();
+});
+self.addEventListener("fetch", (e) => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== "GET" || u.pathname.startsWith("/api/") || u.pathname === "/sw.js") return;
+  e.respondWith(fetch(e.request).then((r) => {
+    const copy = r.clone();
+    caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+    return r;
+  }).catch(() => caches.match(e.request).then((m) => m || caches.match("/"))));
+});
+""".strip()
+    h.raw(200, js.encode("utf-8"), "application/javascript; charset=utf-8")
 
 
 @route("GET", "/site-plan.png", need="user")
@@ -2880,6 +3048,146 @@ def r_cash_csv(h, qs, user):
     h.download(data, f"adalya-gelir-gider-{year}.csv", "text/csv; charset=utf-8")
 
 
+# ---------------------------------------------------------------- reminder queue (aidat)
+REMINDER_DEFAULT = {"enabled": False, "day": 10}
+
+
+def fmt_money(v):
+    return f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def prepare_reminders(conn, ids, actor):
+    st = dues_state(conn, ids)
+    ds = get_setting("dues", DUES_DEFAULT)
+    n = 0
+    for fid in ids:
+        s = st.get(fid) or {}
+        if s.get("overdue", 0) <= 0:
+            continue
+        if conn.execute("SELECT 1 FROM reminders WHERE flat_id=? AND status='bekliyor' AND ts > ?",
+                        (fid, time.time() - 7 * 86400)).fetchone():
+            continue
+        row = conn.execute(
+            "SELECT f.blok, f.daire, p.name, p.phone FROM flats f "
+            "LEFT JOIN people p ON p.flat_id=f.id AND COALESCE(p.move_out,'')='' "
+            "WHERE f.id=? ORDER BY CASE p.kind WHEN 'kiraci' THEN 0 WHEN 'malik' THEN 1 ELSE 2 END LIMIT 1", (fid,)).fetchone()
+        flat = flat_label({"blok": row[0], "daire": row[1]}) if row else f"Daire {fid}"
+        name = (row[2] if row and row[2] else "Sakin")
+        phone = (row[3] if row and row[3] else "")
+        oldest = s.get("oldest_due") or ""
+        msg = (f"Sayın {name}, {flat} için {fmt_money(s['overdue'])} TL gecikmiş aidat bulunuyor. "
+               f"En eski vade: {oldest}. Ödeme: {ds.get('account_name') or site['site_name'] + ' Yönetimi'}"
+               f" · IBAN {ds.get('iban') or '—'}. — {site['site_name']}")
+        conn.execute("INSERT INTO reminders (ts, flat_id, channel, subject, message, status, user) VALUES (?,?,?,?,?,'bekliyor',?)",
+                     (time.time(), fid, "whatsapp", "Aidat hatırlatma", msg, actor["name"]))
+        n += 1
+    return n
+
+
+@route("GET", "/api/reminders", need="admin")
+def r_reminders(h, qs, user):
+    conn = db()
+    rows = conn.execute("SELECT r.id, r.ts, r.flat_id, r.channel, r.subject, r.message, r.status, r.sent_ts, r.sent_by, "
+                        "f.blok, f.daire FROM reminders r LEFT JOIN flats f ON f.id=r.flat_id "
+                        "ORDER BY (r.status='gonderildi'), r.ts DESC LIMIT 200").fetchall()
+    phones = {}
+    for r in rows:
+        if r[2] in phones:
+            continue
+        t = conn.execute("SELECT phone FROM people WHERE flat_id=? AND COALESCE(move_out,'')='' "
+                         "ORDER BY CASE kind WHEN 'kiraci' THEN 0 WHEN 'malik' THEN 1 ELSE 2 END LIMIT 1", (r[2],)).fetchone()
+        phones[r[2]] = (t[0] if t and t[0] else "")
+    conn.close()
+    out = [{"id": r[0], "ts": r[1], "flat_id": r[2], "channel": r[3], "subject": r[4], "message": r[5],
+            "status": r[6], "sent_ts": r[7], "sent_by": r[8] or "",
+            "flat": flat_label({"blok": r[9], "daire": r[10]}) if r[10] else "", "phone": phones.get(r[2], "")}
+           for r in rows]
+    h.json(200, {"reminders": out, "settings": get_setting("reminder", REMINDER_DEFAULT),
+                 "pending": sum(1 for x in out if x["status"] == "bekliyor")})
+
+
+@route("POST", "/api/reminders/prepare", need="admin")
+def r_rem_prepare(h, qs, user):
+    b = h.body()
+    conn = db()
+    ids = b.get("flat_ids")
+    if not isinstance(ids, list) or not ids:
+        ids = [r[0] for r in conn.execute("SELECT id FROM flats")]
+    else:
+        ids = [int(i) for i in ids[:1000]]
+    n = prepare_reminders(conn, ids, user)
+    conn.commit()
+    conn.close()
+    audit(user, "Hatırlatma", f"{n} hatırlatma kuyruğa alındı")
+    h.json(200, {"ok": True, "count": n})
+
+
+@route("POST", "/api/reminders/sent", need="admin")
+def r_rem_sent(h, qs, user):
+    b = h.body()
+    rid = b.get("id")
+    conn = db()
+    r = conn.execute("SELECT flat_id FROM reminders WHERE id=?", (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Hatırlatma bulunamadı")
+    conn.execute("UPDATE reminders SET status='gonderildi', sent_ts=?, sent_by=? WHERE id=?",
+                 (time.time(), user["name"], rid))
+    conn.commit()
+    conn.close()
+    audit(user, "Hatırlatma", f"Gönderildi olarak işaretlendi (#{rid})")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/reminders/cancel", need="admin")
+def r_rem_cancel(h, qs, user):
+    rid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT 1 FROM reminders WHERE id=?", (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Hatırlatma bulunamadı")
+    conn.execute("UPDATE reminders SET status='iptal' WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/reminders/settings", need="admin")
+def r_rem_settings(h, qs, user):
+    b = h.body()
+    cur = get_setting("reminder", REMINDER_DEFAULT)
+    if "enabled" in b:
+        cur["enabled"] = bool(b["enabled"])
+    if "day" in b:
+        try:
+            cur["day"] = max(1, min(28, int(b["day"])))
+        except (TypeError, ValueError):
+            raise ValueError("Gün 1–28 olmalı")
+    put_setting("reminder", cur)
+    audit(user, "Hatırlatma", f"Ayarlar: açık={cur['enabled']} gün={cur['day']}")
+    h.json(200, {"ok": True, "settings": cur})
+
+
+def reminder_worker():
+    while True:
+        try:
+            st = get_setting("reminder", REMINDER_DEFAULT)
+            if st.get("enabled") and datetime.now().day == int(st.get("day") or 10):
+                conn = db()
+                recent = conn.execute("SELECT 1 FROM reminders WHERE user='Sistem' AND ts > ?", (time.time() - 20 * 3600,)).fetchone()
+                if not recent:
+                    ids = [r[0] for r in conn.execute("SELECT id FROM flats")]
+                    n = prepare_reminders(conn, ids, {"name": "Sistem", "role": "system"})
+                    conn.commit()
+                    if n:
+                        audit({"name": "Sistem", "role": "system"}, "Hatırlatma", f"Otomatik kuyruk: {n} daire")
+                conn.close()
+        except Exception:
+            pass
+        time.sleep(1800)
+
+
 # ---------------------------------------------------------------- settings stored in the database (data/, never committed)
 
 DUES_DEFAULT = {"mode": "esit", "amount": 0.0, "total": 0.0, "due_day": 10, "late_pct": 5.0, "iban": "", "account_name": "", "pay_url": ""}
@@ -3524,21 +3832,26 @@ class Handler(BaseHTTPRequestHandler):
         if args.demo:
             m = re.search(r"adalya_demo_role=(admin|staff|resident)", self.headers.get("Cookie", ""))
             role = m.group(1) if m else "admin"
-            return {**DEMO_USER, "role": role, "name": "Demo " + ROLES[role].lower(), "flat_id": 1 if role == "resident" else None}
+            return {**DEMO_USER, "role": role, "name": "Demo " + ROLES[role].lower(), "flat_id": 1 if role == "resident" else None,
+                    "twofa": False}
         s = sessions.get(self.cookie_token())
         if s and s["exp"] > time.time():
             rec = cfg["users"].get(s["username"])
             if not rec:
                 return None
             s["exp"] = time.time() + 12 * 3600
-            return {"username": s["username"], "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id")}
+            return {"username": s["username"], "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id"),
+                    "twofa": bool(rec.get("totp_on"))}
         return None
+
+    def cookie_secure(self):
+        return "; Secure" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else ""
 
     def start_session(self, u):
         tok = secrets.token_urlsafe(32)
         sessions[tok] = {**u, "exp": time.time() + 12 * 3600}
         self.json(200, {"ok": True, "user": u},
-                  {"Set-Cookie": f"adalya_session={tok}; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict"})
+                  {"Set-Cookie": f"adalya_session={tok}; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict{self.cookie_secure()}"})
 
     def body(self, max_bytes=100_000):
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -3705,6 +4018,7 @@ def main():
     srv, port = open_server("0.0.0.0" if args.lan else "127.0.0.1", args.port or 8080, args.port is not None)
     threading.Thread(target=poller, daemon=True).start()
     threading.Thread(target=backup_worker, daemon=True).start()
+    threading.Thread(target=reminder_worker, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     print(f"Adalya Panel {VERSION} running at {url}{'  (demo)' if args.demo else ''}")
     if port != 8080 and args.port is None:

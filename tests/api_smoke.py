@@ -359,6 +359,45 @@ c, csvd = call("/api/cash.csv?year=2099")
 check("cash csv downloads", c == 200 and b"Tarih" in csvd, c)
 check("resident cannot see cash", call("/api/cash?year=2099", "resident")[0] == 403)
 
+# ---------------------------------------------------------------- reminder queue
+check("staff cannot see reminders", call("/api/reminders", "staff")[0] == 403)
+c, prep = call("/api/reminders/prepare", "admin", {})
+check("reminders prepared for overdue flats", c == 200 and prep["count"] > 0, prep)
+c, rq = call("/api/reminders")
+pending = [x for x in rq["reminders"] if x["status"] == "bekliyor"]
+check("queue lists pending with message", bool(pending) and bool(pending[0]["message"]), len(pending))
+check("pending reminder has flat and phone field", bool(pending[0]["flat"]) and "phone" in pending[0], pending[0])
+c, _ = call("/api/reminders/sent", "admin", {"id": pending[0]["id"]})
+check("reminder marked sent", c == 200)
+c, rq = call("/api/reminders")
+check("sent reminder closed", next(x for x in rq["reminders"] if x["id"] == pending[0]["id"])["status"] == "gonderildi")
+check("reminder settings saved", call("/api/reminders/settings", "admin", {"enabled": False, "day": 5})[0] == 200)
+
+# ---------------------------------------------------------------- security: throttle, TOTP, PWA
+for _ in range(5):
+    call("/api/login", "none", {"username": "throttle.test", "password": "bad"})
+c, _ = call("/api/login", "none", {"username": "throttle.test", "password": "bad"})
+check("login throttled per user+IP", c == 429, c)
+c, _ = call("/api/login", "none", {"username": "other.test", "password": "bad"})
+check("throttle does not lock other users", c == 401, c)
+
+c, man = call("/manifest.webmanifest", "none")
+check("manifest served", c == 200 and b"standalone" in man, c)
+c, sw = call("/sw.js", "none")
+check("service worker served", c == 200 and b"adalya-v1" in sw, c)
+c, icon = call("/icon.svg", "none")
+check("app icon served", c == 200 and b"<svg" in icon, c)
+
+try:
+    import sys as _sys, os as _os, base64 as _b64, secrets as _sec
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    import adalya_panel as _ap
+    _s = _b64.b32encode(_sec.token_bytes(20)).decode().rstrip("=")
+    check("TOTP verifies its own code", _ap.totp_verify(_s, _ap.totp_code(_s)))
+    check("TOTP rejects wrong code", not _ap.totp_verify(_s, "000000"))
+except Exception as e:
+    check("TOTP self-test", False, str(e))
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}

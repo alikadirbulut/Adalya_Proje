@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Adalya Paneli</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#1d5f8a">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <style>
 :root {
   --bg: #f4f3ef; --card: #ffffff; --soft: #efede6; --line: #e0ddd4; --text: #2b2a27; --muted: #75736c; --side: #fbfaf7;
@@ -2115,6 +2118,17 @@ PAGES.mesaj = {
   render(el) {
     this.preset = S.msgPreset; S.msgPreset = null;
     el.innerHTML = head("Mesaj gönder", "WhatsApp, e-posta veya imzalı tebliğ için mektup") + `
+      <div class="card"><div class="card-h"><h2>Hatırlatma kuyruğu <span id="rqCount" class="chip plain"></span></h2><span class="hint">Geciken daireler için hazır mesaj</span></div>
+        <div class="form">
+          <div><label for="rqAuto">Otomatik kuyruk</label><select id="rqAuto"><option value="0">Kapalı</option><option value="1">Açık</option></select></div>
+          <div><label for="rqDay">Her ayın</label><input id="rqDay" type="number" min="1" max="28" style="width:80px"></div>
+          <button id="rqSave">Kaydet</button>
+          <button class="primary" id="rqPrep">Gecikenler için kuyruk hazırla</button>
+        </div>
+        <div class="hint" style="margin-top:6px">Kuyruk mesajı hazırlar ve kayda geçer; göndermek için WhatsApp düğmesine basın, sonra “Gönderildi” işaretleyin. Otomatik açıkken seçtiğiniz gün geciken daireler için kuyruk kendiliğinden oluşur.</div>
+        <div class="err" id="rqErr"></div><div class="okmsg" id="rqOk"></div>
+        <div id="rqList" style="margin-top:10px"><div class="empty">Yükleniyor…</div></div>
+      </div>` + `
       <div class="card"><h2>1. Alıcılar ve mesaj</h2>
         <div class="form">
           <div><label for="mTo">Alıcılar</label><select id="mTo"><option value="all">Tüm sakinler</option><option value="malik">Yalnız malikler</option><option value="kiraci">Yalnız kiracılar</option>
@@ -2137,6 +2151,52 @@ PAGES.mesaj = {
       if (this.preset) this.build();
     }).catch(e => { $("#mErr").textContent = e.message; });
     $("#mGo").onclick = () => this.build();
+    this.loadReminders();
+    $("#rqSave").onclick = async () => {
+      $("#rqErr").textContent = ""; $("#rqOk").textContent = "";
+      try {
+        await post("/api/reminders/settings", { enabled: $("#rqAuto").value === "1", day: +$("#rqDay").value });
+        $("#rqOk").textContent = "Ayarlar kaydedildi.";
+        this.loadReminders();
+      } catch (e) { $("#rqErr").textContent = e.message; }
+    };
+    $("#rqPrep").onclick = async () => {
+      $("#rqErr").textContent = ""; $("#rqOk").textContent = "";
+      try {
+        const r = await post("/api/reminders/prepare", {});
+        $("#rqOk").textContent = r.count ? `${r.count} hatırlatma kuyruğa alındı.` : "Geciken daire yok veya son 7 günde kuyruk oluşturulmuş.";
+        this.loadReminders();
+      } catch (e) { $("#rqErr").textContent = e.message; }
+    };
+  },
+  async loadReminders() {
+    try { this.rq = await api("/api/reminders"); this.drawReminders(); }
+    catch (e) { $("#rqList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  },
+  drawReminders() {
+    const r = this.rq;
+    if (!r || !$("#rqList")) return;
+    $("#rqAuto").value = r.settings.enabled ? "1" : "0";
+    $("#rqDay").value = r.settings.day;
+    $("#rqCount").textContent = r.pending ? r.pending + " bekliyor" : "boş";
+    const rows = r.reminders.slice(0, 15);
+    $("#rqList").innerHTML = rows.length ? `<div class="list">${rows.map(x => {
+      const wa = waNum(x.phone);
+      return `<div class="li" style="align-items:flex-start;gap:14px">
+        <span style="min-width:0;flex:1"><b>${esc(x.flat)}</b> ${x.status === "gonderildi" ? '<span class="chip green">Gönderildi</span>'
+          : x.status === "iptal" ? '<span class="chip plain">İptal</span>' : '<span class="chip amber">Bekliyor</span>'}
+          <div class="hint">${esc(x.message)}</div></span>
+        <span class="t" style="display:flex;gap:6px;align-items:center">
+          ${wa && x.status === "bekliyor" ? `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(x.message)}">WhatsApp</a>` : ""}
+          ${x.status === "bekliyor" ? `<button class="btn sm" data-rqsent="${x.id}">Gönderildi</button><button class="btn sm" data-rqcancel="${x.id}">İptal</button>` : ""}
+        </span></div>`;
+    }).join("")}</div>` : '<div class="hint">Kuyruk boş. “Gecikenler için kuyruk hazırla” ile oluşturun.</div>';
+    $$("[data-rqsent]").forEach(b => b.onclick = async () => {
+      try { await post("/api/reminders/sent", { id: +b.dataset.rqsent }); this.loadReminders(); } catch (e) { $("#rqErr").textContent = e.message; }
+    });
+    $$("[data-rqcancel]").forEach(b => b.onclick = async () => {
+      try { await post("/api/reminders/cancel", { id: +b.dataset.rqcancel }); this.loadReminders(); } catch (e) { $("#rqErr").textContent = e.message; }
+    });
   },
   recipients() {
     const to = $("#mTo").value, blok = $("#mBlok").value, flats = (S.reg || []).filter(f => !blok || f.blok === blok);
@@ -3086,6 +3146,14 @@ PAGES.ayarlar = {
           <button id="pGo">Değiştir</button></div>
         <div class="err" id="pErr"></div><div class="okmsg" id="pOk"></div>`}</div>
 
+      <div class="card"><h2>İki adımlı doğrulama <small>yönetici girişi için</small></h2>
+        ${S.me.demo ? '<div class="hint">Demo modunda iki adımlı doğrulama kapalı.</div>' : me.twofa
+          ? `<div class="chip green">Açık</div><p class="hint" style="margin-top:8px">Her girişte authenticator uygulamasındaki 6 haneli kod istenir.</p>
+             <div class="form"><div><label for="tfaPw">Şifreniz</label><input id="tfaPw" type="password" autocomplete="current-password"></div><button id="tfaOff">Kapat</button></div>`
+          : `<p class="hint">Google Authenticator, Microsoft Authenticator veya 1Password ile kullanılır. Kurulumdan sonra her girişte kod istenir.</p>
+             <button class="primary" id="tfaStart">Kurulumu başlat</button><div id="tfaBox" style="margin-top:10px"></div>`}
+        <div class="err" id="tfaErr"></div><div class="okmsg" id="tfaOk"></div></div>
+
       <div class="card"><h2>Hakkında</h2><div class="prose"><p>Adalya Paneli ${esc(S.me.version)} · ${S.me.demo ? "demo modu" : S.me.lan ? "site ağına açık" : "yalnızca bu bilgisayar"}<br>
         Veriler panel klasöründe tutulur: geçmiş ve kullanıcılar <span class="mono">data</span> klasöründe, anma bölümü ve harita <span class="mono">site.json</span> ve <span class="mono">media</span> klasöründe.</p></div></div>`;
 
@@ -3097,6 +3165,26 @@ PAGES.ayarlar = {
       try { await post("/api/me/password", { current: $("#pCur").value, new: $("#pNew").value }); msg("#pOk", "Şifreniz değişti."); $("#pCur").value = $("#pNew").value = ""; } catch (e) { msg("#pErr", e.message); }
     };
     if (!A) return;
+
+    if ($("#tfaStart")) $("#tfaStart").onclick = async () => {
+      msg("#tfaErr", "");
+      try {
+        const r = await post("/api/me/2fa/setup", {});
+        $("#tfaBox").innerHTML = `<div class="info">Gizli anahtar: <b class="mono">${esc(r.secret)}</b><br>
+          Uygulamada "gizli anahtar" olarak girin veya <a href="${esc(r.uri)}">otpauth bağlantısını</a> açın.</div>
+          <div class="form"><div><label for="tfaCode">Uygulamadaki 6 haneli kod</label><input id="tfaCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+          <button class="primary" id="tfaEnable">Doğrula ve aç</button></div><div class="err" id="tfaErr2"></div>`;
+        $("#tfaEnable").onclick = async () => {
+          try { await post("/api/me/2fa/enable", { code: $("#tfaCode").value }); this.render(el); }
+          catch (e) { $("#tfaErr2").textContent = e.message; }
+        };
+      } catch (e) { msg("#tfaErr", e.message); }
+    };
+    if ($("#tfaOff")) $("#tfaOff").onclick = async () => {
+      if (!confirm("İki adımlı doğrulama kapatılsın mı?")) return;
+      try { await post("/api/me/2fa/disable", { password: $("#tfaPw").value }); this.render(el); }
+      catch (e) { msg("#tfaErr", e.message); }
+    };
 
     if ($("#nGo")) $("#nGo").onclick = async () => {
       msg("#nErr", "");
@@ -3216,11 +3304,34 @@ function loginView() {
       return;
     }
     if (!username || !pw) { $("#lErr").textContent = "Kullanıcı adı ve şifreyi yazın."; return; }
-    try { await post("/api/login", { username, password: pw }); boot(); } catch (e) { $("#lErr").textContent = e.message; }
+    try {
+      const r = await post("/api/login", { username, password: pw });
+      if (r.twofa) { twofaView(r.pending); return; }
+      boot();
+    } catch (e) { $("#lErr").textContent = e.message; }
   };
   $("#lGo").onclick = go;
   $$("#root input").forEach(i => i.onkeydown = e => { if (e.key === "Enter") go(); });
   (setup ? $("#lFull") : $("#lUser")).focus();
+}
+
+function twofaView(pending) {
+  $("#root").innerHTML = `<div class="login"><div class="card">
+    <h1 style="margin-bottom:4px">İki adımlı doğrulama</h1>
+    <div class="sub" style="margin-bottom:14px">Authenticator uygulamasındaki 6 haneli kodu girin.</div>
+    <label for="lCode">Kod</label><input id="lCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+    <button class="primary" id="lCodeGo" style="width:100%;justify-content:center">Doğrula</button>
+    <div class="err" id="lCodeErr"></div>
+    <a href="#" id="lBack" style="display:block;margin-top:10px">Geri dön</a></div></div>`;
+  const go = async () => {
+    $("#lCodeErr").textContent = "";
+    try { await post("/api/login/2fa", { pending, code: $("#lCode").value }); boot(); }
+    catch (e) { $("#lCodeErr").textContent = e.message; }
+  };
+  $("#lCodeGo").onclick = go;
+  $("#lCode").onkeydown = e => { if (e.key === "Enter") go(); };
+  $("#lBack").onclick = e => { e.preventDefault(); loginView(); };
+  $("#lCode").focus();
 }
 
 let polling = null;
@@ -3238,6 +3349,9 @@ window.addEventListener("hashchange", () => { if (S.me?.user) render(); });
 let resizeT = null;
 window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => PAGES[S.page]?.onResize?.(), 120); });
 boot();
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
 </script>
 </body>
 </html>
