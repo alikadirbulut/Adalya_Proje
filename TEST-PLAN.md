@@ -78,6 +78,7 @@ Demo checklist before the site day:
 - [ ] **Dairem → Araçlarım**: add, edit, remove; third car is refused.
 - [ ] **Vardiya**: 4/6/8/10 wall, click a tile to enlarge; quick guest entry.
 - [ ] **Kayıt istekleri**: submit `/kayit` from the phone, approve on the PC, open the generated invite link.
+- [ ] **Mobil**: on a phone-width window as Yönetici/Güvenlik, the top bar opens the drawer, groups show badges, forms are full width, and tables scroll sideways.
 - [ ] **Proje**: read the biography and check the memorial dates.
 
 On site, live (opens http://127.0.0.1:8080 in the browser):

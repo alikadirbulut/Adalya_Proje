@@ -63,7 +63,9 @@ Give each person their username and password privately. They can change their ow
 
 ## 5. Opening it on phones and laptops
 
-On any device connected to the **site network**, open `http://192.168.0.30:8080` and add it to bookmarks. "Add to home screen" creates a shortcut; a true **installable app (PWA)** only works over **HTTPS or localhost**, so over plain HTTP it will keep opening in the browser — that is a browser rule, not a panel bug.
+On any device connected to the **site network**, open `http://192.168.0.30:8080` and add it to bookmarks. The **manager and Güvenlik** get a mobile top bar (logo + bell) and a slide-out menu; **residents** get bottom tabs.
+
+"Add to home screen" creates a shortcut. On **iPhone** it opens without the Safari address bar (the panel sets the `apple-mobile-web-app` tags). On **Android**, a real installed app without the URL bar needs **HTTPS or localhost**; over plain HTTP the shortcut keeps the browser bar — that is a browser rule, not a panel bug.
 
 ## 6. Access from outside the site (only if really needed)
 

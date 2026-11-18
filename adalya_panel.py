@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "3.0"
+VERSION = "3.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -1282,30 +1282,21 @@ def plan_file():
 def r_manifest(h, qs, user):
     data = {"name": site["site_name"], "short_name": "Adalya", "id": "/", "start_url": "/", "scope": "/",
             "display": "standalone", "display_override": ["standalone", "minimal-ui"],
-            "background_color": "#f7f6f3", "theme_color": "#1d5f8a", "lang": "tr", "dir": "ltr",
+            "background_color": "#f7f6f3", "theme_color": "#1d2f28", "lang": "tr", "dir": "ltr",
             "categories": ["productivity", "utilities"],
             "description": "Adalya Sitesi yönetim paneli",
-            "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-                      {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-                      {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
+            "icons": [{"src": "/icon-192.png?v=2", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                      {"src": "/icon-512.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                      {"src": "/icon-maskable-512.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
     h.raw(200, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/manifest+json")
-
-
-@route("GET", "/icon.svg", need="none")
-def r_icon(h, qs, user):
-    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">'
-           '<rect width="192" height="192" rx="44" fill="#1d2f28"/>'
-           '<g fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">'
-           '<rect x="44" y="62" width="72" height="66" rx="14"/>'
-           '<path d="m116 86 32-19v58l-32-19"/>'
-           '<circle cx="80" cy="95" r="14"/></g></svg>')
-    h.raw(200, svg.encode("utf-8"), "image/svg+xml")
 
 
 @route("GET", "/icon-192.png", need="none")
 @route("GET", "/icon-512.png", need="none")
+@route("GET", "/apple-touch-icon.png", need="none")
+@route("GET", "/icon-maskable-512.png", need="none")
 def r_icon_png(h, qs, user):
-    name = "icon-512.png" if h.path.endswith("512.png") else "icon-192.png"
+    name = os.path.basename(h.path.split("?")[0])
     path = os.path.join(HERE, name)
     if not os.path.exists(path):
         return h.json(404, {"error": "Simge bulunamadı"})
@@ -1317,10 +1308,10 @@ def r_icon_png(h, qs, user):
 @route("GET", "/sw.js", need="none")
 def r_sw(h, qs, user):
     js = """
-const CACHE = "adalya-v3";
+const CACHE = "adalya-v4";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/icon.svg", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"])).catch(() => {}));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/manifest.webmanifest"])).catch(() => {}));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
@@ -3619,6 +3610,7 @@ button{margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;backg
 .err{color:var(--bad);font-size:13px;margin-top:8px;min-height:1em}
 .ok{color:var(--ok);font-size:15px;font-weight:600}
 .big{font-family:Consolas,monospace;font-size:20px;letter-spacing:.06em;display:inline-block;padding:6px 10px;border:2px solid var(--text);border-radius:8px;margin:8px 0}
+.plogo{width:64px;height:64px;border-radius:18px;object-fit:cover;display:block;margin:0 0 12px;border:1px solid var(--line)}
 """
 
 
@@ -3676,6 +3668,7 @@ def r_kayit_page(h, qs, user):
     import html as html_lib
     nm = html_lib.escape(site["site_name"])
     body = """
+<img class="plogo" src="/icon-192.png?v=2" alt="">
 <h1>__SITE__</h1><p class="sub">Site sakini kaydı · yönetim onayından sonra etkinleşir</p>
 <form id="reg">
   <section class="card"><h2>Kimsiniz?</h2>

@@ -2,12 +2,16 @@
 <html lang="tr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Adalya Paneli</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/icon-192.png">
-<meta name="theme-color" content="#1d5f8a">
-<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="icon" type="image/png" href="/icon-192.png?v=2">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+<meta name="theme-color" content="#1d2f28">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Adalya">
 <style>
 :root {
   --bg: #f4f3ef; --card: #ffffff; --soft: #efede6; --line: #e0ddd4; --text: #2b2a27; --muted: #75736c; --side: #fbfaf7;
@@ -417,6 +421,50 @@ html[data-theme="dark"] {
 .pal-item b { font-size: 14px; font-weight: 600; }
 .pal-item .t { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pal-empty { padding: 18px; color: var(--muted); text-align: center; font-size: 13px; }
+/* -------- mobile app shell (staff & manager): topbar + drawer -------- */
+.brandlogo { width: 38px; height: 38px; border-radius: 12px; object-fit: cover; flex: none; border: 1px solid var(--line); }
+.loginlogo { width: 64px; height: 64px; border-radius: 18px; object-fit: cover; display: block; margin: 0 auto 14px; border: 1px solid var(--line); }
+.topbar, .navback, .navclose { display: none; }
+.tbbtn { width: 42px; height: 42px; display: grid; place-items: center; border: 0; background: transparent; color: var(--text); border-radius: 10px; position: relative; flex: none; padding: 0; }
+.tbbtn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tbbtn .nb { position: absolute; top: 3px; right: 3px; margin: 0; }
+.tbbrand { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
+.tbbrand img { width: 30px; height: 30px; border-radius: 9px; object-fit: cover; flex: none; }
+.tbbrand b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) {
+  body:not(.has-tabbar) .topbar {
+    display: flex; position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+    height: calc(58px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 10px 0;
+    align-items: center; gap: 8px; background: var(--card); border-bottom: 1px solid var(--line);
+  }
+  body:not(.has-tabbar) aside {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 70; width: min(86vw, 320px); height: 100dvh;
+    transform: translateX(-104%); transition: transform .22s ease; overflow-y: auto; overscroll-behavior: contain;
+    box-shadow: 0 0 40px rgba(0, 0, 0, .28); padding: calc(14px + env(safe-area-inset-top)) 12px 28px;
+  }
+  body:not(.has-tabbar).nav-open aside { transform: none; }
+  body.nav-open { overflow: hidden; }
+  body.nav-open .navback { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 65; }
+  .navclose { display: grid; position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 8px; width: 36px; height: 36px; place-items: center; border: 0; background: transparent; color: var(--muted); font-size: 24px; line-height: 1; padding: 0; }
+  body:not(.has-tabbar) nav { display: block; }
+  body:not(.has-tabbar) .navgroup { display: flex !important; }
+  body:not(.has-tabbar) .navsec { display: block !important; }
+  body:not(.has-tabbar) .navitems { display: none !important; }
+  body:not(.has-tabbar) .navsec.open .navitems { display: block !important; }
+  body:not(.has-tabbar) .sidefoot { display: block; }
+  body:not(.has-tabbar) main { padding-top: calc(76px + env(safe-area-inset-top)); }
+  .head-actions { flex-wrap: wrap; }
+  .pagehead { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .card-h { flex-wrap: wrap; }
+  .form > div { flex: 1 1 100%; min-width: 0 !important; }
+  input, select, textarea { font-size: 16px; }
+  .login { padding: 14px; }
+  .login .card { padding: 20px; }
+  .tablewrap { -webkit-overflow-scrolling: touch; }
+  .li { flex-wrap: wrap; }
+}
+body.has-tabbar main { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+body.has-tabbar .tabbar { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
 </style>
 </head>
 <body>
@@ -593,9 +641,16 @@ function shell() {
   const open = navOpenState();
   document.body.classList.toggle("has-tabbar", isResident());
   $("#root").innerHTML = `
+  <header class="topbar" id="topbar">
+    <button class="tbbtn" id="navToggle" aria-label="Menüyü aç"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="tbbrand"><img src="/icon-192.png?v=2" alt=""><b>${esc(site().site_name)}</b></div>
+    <button class="tbbtn" id="topBell" aria-label="Bildirimler"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span class="bell-n nb" style="display:none"></span></button>
+  </header>
+  <div class="navback" id="navBack"></div>
   <div class="app">
     <aside>
-      <div class="brand"><div style="width:36px;height:36px;border-radius:11px;background:var(--text);color:var(--card);display:grid;place-items:center;font-weight:700;flex:none">A</div><div><b id="brandName">${esc(site().site_name)}</b><span>${isResident() ? "Sakin paneli" : "Site yönetimi"}</span></div></div>
+      <button class="navclose" id="navClose" aria-label="Menüyü kapat">×</button>
+      <div class="brand"><img class="brandlogo" src="/icon-192.png?v=2" alt=""><div><b id="brandName">${esc(site().site_name)}</b><span>${isResident() ? "Sakin paneli" : "Site yönetimi"}</span></div></div>
       <nav>${NAV.map(([g, def, items]) => {
         const vis = items.filter(([id]) => canSee(id)); if (!vis.length) return "";
         const isOpen = open[g] ?? def;
@@ -624,6 +679,12 @@ function shell() {
   const dr = $("#demoRole");
   if (dr) dr.onchange = () => { document.cookie = "adalya_demo_role=" + dr.value + "; path=/; SameSite=Strict"; history.replaceState(null, "", "#/"); boot(); };
   const bb = $("#bellBtn"); if (bb) bb.onclick = () => { location.hash = "#/bildirimler"; };
+  const closeNav = () => document.body.classList.remove("nav-open");
+  const nt = $("#navToggle"); if (nt) nt.onclick = () => document.body.classList.toggle("nav-open");
+  const nc = $("#navClose"); if (nc) nc.onclick = closeNav;
+  const nbk = $("#navBack"); if (nbk) nbk.onclick = closeNav;
+  $$("aside nav a").forEach(a => a.addEventListener("click", closeNav));
+  const tbell = $("#topBell"); if (tbell) tbell.onclick = () => { location.hash = "#/bildirimler"; };
   const ib = $("#installBtn"); if (ib) ib.onclick = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -652,6 +713,7 @@ function parseHash() {
 
 function render() {
   timers.forEach(clearInterval); timers = [];
+  document.body.classList.remove("nav-open");
   S.editing = false; S.live.big = null;
   document.onkeydown = null; document.onfullscreenchange = null;
   const sb = $("#shiftBig"); if (sb) sb.hidden = true;
@@ -3327,7 +3389,7 @@ async function maybeBrowserNote() {
     try {
       const r = await api("/api/notifications");
       const x = r.notifications.find(y => !y.read);
-      if (x) new Notification(x.title, { body: x.body, icon: "/icon.svg" });
+      if (x) new Notification(x.title, { body: x.body, icon: "/icon-192.png?v=2" });
     } catch {}
   }
   lastNoteCount = n;
@@ -3800,6 +3862,7 @@ PAGES.ayarlar = {
 function loginView() {
   const setup = S.me.setup_needed, m = site().memorial;
   $("#root").innerHTML = `<div class="login"><div class="card">
+    <img class="loginlogo" src="/icon-192.png?v=2" alt="">
     <h1 style="margin-bottom:4px">${esc(site().site_name)}</h1><div class="sub" style="margin-bottom:18px">${setup ? "İlk kurulum: ilk yönetici hesabını oluşturun" : "Kamera ve ağ yönetim paneli"}</div>
     ${setup ? '<label for="lFull">Ad soyad</label><input id="lFull" autocomplete="name" placeholder="Ali Kadir Bulut">' : ""}
     <label for="lUser">Kullanıcı adı</label><input id="lUser" autocomplete="username" placeholder="${setup ? "ali" : ""}" autocapitalize="off">

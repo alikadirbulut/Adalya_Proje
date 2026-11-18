@@ -240,7 +240,10 @@ check("delete announcement", call("/api/announcements/delete", "admin", {"id": n
 
 c, gp = call("/api/guest-passes", "resident")
 check("resident guest passes listed", c == 200 and isinstance(gp["passes"], list))
-check("resident creates guest pass", call("/api/guest-passes", "resident", {"name": "Test misafir", "plate": "07 tst 9", "date": "2026-11-18", "from": "00:00", "to": "23:59"})[0] == 200)
+c, st = call("/api/status", "admin")
+import datetime as _dt
+today = _dt.datetime.fromtimestamp(st["now"]).strftime("%Y-%m-%d")
+check("resident creates guest pass", call("/api/guest-passes", "resident", {"name": "Test misafir", "plate": "07 tst 9", "date": today, "from": "00:00", "to": "23:59"})[0] == 200)
 c, gp = call("/api/guest-passes", "resident")
 p = next((x for x in gp["passes"] if x["name"] == "Test misafir"), None)
 check("pass plate uppercased and active", p and p["plate"] == "07 TST 9" and p["status"] == "active", p)
@@ -384,9 +387,9 @@ check("throttle does not lock other users", c == 401, c)
 c, man = call("/manifest.webmanifest", "none")
 check("manifest served", c == 200 and b"standalone" in man, c)
 c, sw = call("/sw.js", "none")
-check("service worker served", c == 200 and b"adalya-v1" in sw, c)
-c, icon = call("/icon.svg", "none")
-check("app icon served", c == 200 and b"<svg" in icon, c)
+check("service worker served", c == 200 and b"adalya-v4" in sw, c)
+c, icon = call("/icon-192.png", "none")
+check("app icon served", c == 200 and icon[:4] == b"\x89PNG", c)
 
 try:
     import sys as _sys, os as _os, base64 as _b64, secrets as _sec
@@ -471,9 +474,12 @@ check("third car refused", call("/api/my/vehicle", "resident", {"plate": "07 TST
 c, mf = call("/manifest.webmanifest", "none")
 if isinstance(mf, bytes):
     mf = json.loads(mf)
-check("manifest lists png icons", c == 200 and any(i["src"] == "/icon-512.png" for i in mf["icons"]), mf)
+check("manifest lists png icons", c == 200 and any(i["src"] == "/icon-512.png?v=2" for i in mf["icons"]), mf)
+check("manifest has maskable icon", any(i.get("purpose") == "maskable" for i in mf["icons"]), mf)
 c, png = call("/icon-192.png", "none")
 check("png icon served", c == 200 and png[:4] == b"\x89PNG", c)
+c, at = call("/apple-touch-icon.png", "none")
+check("apple touch icon served", c == 200 and at[:4] == b"\x89PNG", c)
 
 # audit trail
 c, au = call("/api/audit")
