@@ -4,13 +4,21 @@
   "memorial": {
     "name": "Esin Noğan",
     "birth": "1995-01-13",
-    "death": "2026-01-18",
+    "death": "2026-06-18",
     "profession": "Okul öncesi öğretmeni",
-    "note": "Çok güzel bir insandı.",
+    "note": "Sevgiyle anılıyor.",
     "created_by": "Ali Kadir Bulut",
     "photo": "memorial.jpg",
     "photo_x": 44,
-    "photo_y": 35
+    "photo_y": 35,
+    "death_time": "04:30",
+    "birth_place": "Zonguldak",
+    "roots": "Eskişehir ve Sinop",
+    "parents": "Memur",
+    "education": "Pamukkale Üniversitesi · Yakın Doğu Üniversitesi (Kıbrıs)",
+    "raised": "Antalya",
+    "bio": "Zonguldak'ta doğdu. Kökleri Eskişehir ve Sinop'a uzanıyordu; memur bir ailenin çocuğu olarak Antalya'da büyüdü. Pamukkale Üniversitesi'nde ve Kıbrıs'ta Yakın Doğu Üniversitesi'nde okudu, okul öncesi öğretmeni oldu. 18 Haziran 2026 sabahı saat 04:30'da, yaşadığı sitede hayatını kaybetti.",
+    "note_ali": "Birlikteydik. Çok güzel bir insandı; onun anısına sitedeki kameraları onardım ve bu platformu kurdum."
   },
   "labels": [],
   "plan": {

@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.9"
+VERSION = "3.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -95,12 +95,17 @@ CREATE TABLE IF NOT EXISTS registrations (id INTEGER PRIMARY KEY, ts REAL, ref T
     flat_id INTEGER, decided_by TEXT, decided_at REAL, reject_reason TEXT, ip TEXT);
 CREATE TABLE IF NOT EXISTS devices (id INTEGER PRIMARY KEY, username TEXT, token_hash TEXT UNIQUE, label TEXT,
     ua TEXT, ip TEXT, first_ts REAL, last_ts REAL);
+CREATE TABLE IF NOT EXISTS request_messages (id INTEGER PRIMARY KEY, request_id INTEGER, ts REAL, user TEXT,
+    role TEXT, text TEXT);
+CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY, ts REAL, username TEXT, kind TEXT, title TEXT,
+    body TEXT, link TEXT, read_ts REAL);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SITE_DEFAULT = {
     "site_name": "Adalya sitesi", "support_contact": "",
-    "memorial": {"name": "Esin Noğan", "birth": "", "death": "", "profession": "", "note": "",
+    "memorial": {"name": "Esin Noğan", "birth": "", "death": "", "death_time": "", "profession": "", "note": "",
+                 "bio": "", "birth_place": "", "roots": "", "parents": "", "education": "", "raised": "", "note_ali": "",
                  "created_by": "", "photo": "", "photo_x": 50, "photo_y": 35},
     "labels": [],
     "plan": {"rotation": 34, "trim_white": True},
@@ -237,7 +242,17 @@ def migrate(conn):
     fcols = {r[1] for r in conn.execute("PRAGMA table_info(flats)")}
     if "kat" not in fcols:
         conn.execute("ALTER TABLE flats ADD COLUMN kat TEXT")
-
+    if conn.execute("PRAGMA user_version").fetchone()[0] < 1:
+        if conn.execute("SELECT 1 FROM requests LIMIT 1").fetchone():
+            conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) "
+                         "SELECT r.id, r.ts, r.user, 'resident', r.text FROM requests r "
+                         "WHERE NOT EXISTS (SELECT 1 FROM request_messages m WHERE m.request_id=r.id)")
+            conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) "
+                         "SELECT r.id, COALESCE(r.closed_at, r.ts), COALESCE(r.closed_by, 'Yönetim'), 'admin', r.reply FROM requests r "
+                         "WHERE r.reply IS NOT NULL AND r.reply <> '' "
+                         "AND NOT EXISTS (SELECT 1 FROM request_messages m WHERE m.request_id=r.id AND m.role='admin')")
+        conn.execute("PRAGMA user_version = 1")
+        conn.commit()
 
 def load_cfg():
     global cfg
@@ -572,6 +587,8 @@ def r_me(h, qs, user):
         user = {**user, "cams": len(allowed_channels(user.get("flat_id"))), "unread": unread_announcements(user["username"])}
     if user and user["role"] == "admin":
         user = {**user, "pending_regs": pending_registrations(), "open_requests": open_requests()}
+    if user:
+        user = {**user, "notifications": unread_notifications(user["username"])}
     h.json(200, {"setup_needed": not args.demo and not admins(), "user": user, "demo": args.demo,
                  "site": site_payload(bool(user)), "version": VERSION, "lan": args.lan})
 
@@ -1157,9 +1174,16 @@ def r_site(h, qs, user):
         changed.append("destek iletişimi")
     if isinstance(b.get("memorial"), dict):
         m, src = site["memorial"], b["memorial"]
-        for k, limit in (("name", 80), ("profession", 80), ("note", 4000), ("created_by", 120)):
+        for k, limit in (("name", 80), ("profession", 80), ("note", 4000), ("created_by", 120),
+                         ("birth_place", 80), ("roots", 160), ("parents", 160), ("education", 200),
+                         ("raised", 80), ("bio", 4000), ("note_ali", 2000)):
             if k in src:
                 m[k] = str(src[k])[:limit]
+        if "death_time" in src:
+            v = str(src["death_time"])
+            if v and not re.match(r"^\d{2}:\d{2}$", v):
+                raise ValueError("Saat biçimi SS:DD olmalı")
+            m["death_time"] = v
         for k in ("birth", "death"):
             if k in src:
                 v = str(src[k])
@@ -1256,10 +1280,14 @@ def plan_file():
 
 @route("GET", "/manifest.webmanifest", need="none")
 def r_manifest(h, qs, user):
-    data = {"name": site["site_name"], "short_name": "Adalya", "start_url": "/", "scope": "/",
-            "display": "standalone", "background_color": "#f7f6f3", "theme_color": "#1d5f8a", "lang": "tr",
+    data = {"name": site["site_name"], "short_name": "Adalya", "id": "/", "start_url": "/", "scope": "/",
+            "display": "standalone", "display_override": ["standalone", "minimal-ui"],
+            "background_color": "#f7f6f3", "theme_color": "#1d5f8a", "lang": "tr", "dir": "ltr",
+            "categories": ["productivity", "utilities"],
             "description": "Adalya Sitesi yönetim paneli",
-            "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
+            "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                      {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                      {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
     h.raw(200, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/manifest+json")
 
 
@@ -1274,13 +1302,25 @@ def r_icon(h, qs, user):
     h.raw(200, svg.encode("utf-8"), "image/svg+xml")
 
 
+@route("GET", "/icon-192.png", need="none")
+@route("GET", "/icon-512.png", need="none")
+def r_icon_png(h, qs, user):
+    name = "icon-512.png" if h.path.endswith("512.png") else "icon-192.png"
+    path = os.path.join(HERE, name)
+    if not os.path.exists(path):
+        return h.json(404, {"error": "Simge bulunamadı"})
+    with open(path, "rb") as fh:
+        data = fh.read()
+    h.raw(200, data, "image/png")
+
+
 @route("GET", "/sw.js", need="none")
 def r_sw(h, qs, user):
     js = """
-const CACHE = "adalya-v1";
+const CACHE = "adalya-v3";
 self.addEventListener("install", (e) => {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/icon.svg", "/manifest.webmanifest"])).catch(() => {}));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/icon.svg", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"])).catch(() => {}));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
@@ -2009,6 +2049,21 @@ def pending_registrations():
     return n
 
 
+def unread_notifications(username):
+    conn = db()
+    n = conn.execute("SELECT COUNT(*) FROM notifications WHERE username=? AND read_ts IS NULL", (username,)).fetchone()[0]
+    conn.close()
+    return n
+
+
+def notify(username, kind, title, body, link=""):
+    conn = db()
+    conn.execute("INSERT INTO notifications (ts, username, kind, title, body, link) VALUES (?,?,?,?,?,?)",
+                 (time.time(), username, kind, title, body, link))
+    conn.commit()
+    conn.close()
+
+
 def open_requests():
     conn = db()
     n = conn.execute("SELECT COUNT(*) FROM requests WHERE status='acik'").fetchone()[0]
@@ -2073,6 +2128,10 @@ def r_announcement_save(h, qs, user):
                            (time.time(), title, body, kind, pinned, user["name"])).lastrowid
     conn.commit()
     conn.close()
+    if not b.get("id"):
+        for uname, rec in cfg["users"].items():
+            if rec.get("role") == "resident" and rec.get("status", "active") == "active":
+                notify(uname, "duyuru", f"Yeni duyuru: {title}", body[:200], "#/duyurular")
     audit(user, "Duyuru", f"{'Düzenlendi' if aid and b.get('id') else 'Yayınlandı'}: {title}")
     h.json(200, {"ok": True, "id": aid})
 
@@ -2105,6 +2164,51 @@ def r_announcement_read(h, qs, user):
     conn.commit()
     conn.close()
     h.json(200, {"ok": True})
+
+
+@route("GET", "/api/notifications", need="user")
+def r_notifications(h, qs, user):
+    conn = db()
+    rows = conn.execute("SELECT id, ts, kind, title, body, link, read_ts FROM notifications "
+                        "WHERE username=? ORDER BY ts DESC LIMIT 100", (user["username"],)).fetchall()
+    conn.close()
+    h.json(200, {"notifications": [{"id": r[0], "ts": r[1], "kind": r[2], "title": r[3], "body": r[4] or "",
+                                     "link": r[5] or "", "read": bool(r[6])} for r in rows],
+                 "unread": sum(1 for r in rows if not r[6])})
+
+
+@route("POST", "/api/notifications/read", need="user")
+def r_notifications_read(h, qs, user):
+    b = h.body()
+    conn = db()
+    if b.get("all"):
+        conn.execute("UPDATE notifications SET read_ts=? WHERE username=? AND read_ts IS NULL", (time.time(), user["username"]))
+    elif b.get("id"):
+        conn.execute("UPDATE notifications SET read_ts=? WHERE id=? AND username=?", (time.time(), b["id"], user["username"]))
+    conn.commit()
+    conn.close()
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/notifications/app", need="admin")
+def r_notify_app(h, qs, user):
+    b = h.body()
+    try:
+        flat_ids = {int(x) for x in (b.get("flat_ids") or [])}
+    except (TypeError, ValueError):
+        raise ValueError("Alıcı listesi geçersiz")
+    if not flat_ids:
+        raise ValueError("En az bir alıcı seçin")
+    title, body = txt(b, "title", 140), txt(b, "body", 2000)
+    if not title or not body:
+        raise ValueError("Başlık ve mesaj gerekli")
+    n = 0
+    for uname, rec in cfg["users"].items():
+        if rec.get("role") == "resident" and rec.get("status", "active") == "active" and rec.get("flat_id") in flat_ids:
+            notify(uname, "mesaj", title, body, "#/bildirimler")
+            n += 1
+    audit(user, "Uygulama bildirimi", f"{n} hesap · {title}")
+    h.json(200, {"ok": True, "count": n})
 
 
 def guest_pass_rows(conn, where, args):
@@ -2700,7 +2804,14 @@ def r_my(h, qs, user):
         return h.json(400, {"error": "Bu sayfa site sakinleri içindir"})
     conn = db()
     flats = registry(conn, user["flat_id"])
-    reqs = conn.execute("SELECT id, ts, text, status, reply FROM requests WHERE flat_id=? ORDER BY ts DESC LIMIT 30", (user["flat_id"],)).fetchall()
+    reqs = conn.execute("SELECT id, ts, text, status, reply FROM requests WHERE flat_id=? ORDER BY ts DESC LIMIT 30",
+                        (user["flat_id"],)).fetchall()
+    msgs = {}
+    if reqs:
+        ids = [r[0] for r in reqs]
+        for m in conn.execute("SELECT request_id, ts, user, role, text FROM request_messages WHERE request_id IN ("
+                              + ",".join("?" * len(ids)) + ") ORDER BY ts, id", ids):
+            msgs.setdefault(m[0], []).append({"ts": m[1], "user": m[2], "role": m[3], "text": m[4]})
     conn.close()
     f = flats[0] if flats else None
     if f:
@@ -2721,7 +2832,8 @@ def r_my(h, qs, user):
         dues.update(iban=ds["iban"], account_name=ds["account_name"], late_pct=ds["late_pct"], due_day=ds["due_day"],
                     pay_url=ds.get("pay_url", ""))
     h.json(200, {"flat": f, "kinds": KINDS, "dues": dues, "methods": PAY_METHODS,
-                 "requests": [{"id": r[0], "ts": r[1], "text": r[2], "status": r[3], "reply": r[4]} for r in reqs]})
+                 "requests": [{"id": r[0], "ts": r[1], "text": r[2], "status": r[3], "reply": r[4],
+                               "messages": msgs.get(r[0], [])} for r in reqs]})
 
 
 REQ_CATEGORIES = {"bakim": "Bakım / onarım", "ariza": "Arıza", "temizlik": "Temizlik",
@@ -2766,6 +2878,8 @@ def r_my_request(h, qs, user):
     conn = db()
     rid = conn.execute("INSERT INTO requests (ts, flat_id, user, text, status, category) VALUES (?,?,?,?, 'acik', ?)",
                        (time.time(), user["flat_id"], user["name"], t, cat)).lastrowid
+    conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) VALUES (?,?,?, 'resident', ?)",
+                 (rid, time.time(), user["name"], t))
     if photo:
         data, ext = photo
         os.makedirs(request_dir(), exist_ok=True)
@@ -2805,22 +2919,154 @@ def r_requests(h, qs, user):
     rows = conn.execute("SELECT r.id, r.ts, r.user, r.text, r.status, r.reply, r.closed_by, r.closed_at, f.blok, f.daire, "
                         "r.category, r.photo, r.flat_id FROM requests r LEFT JOIN flats f ON f.id=r.flat_id "
                         "ORDER BY r.status='kapali', r.ts DESC LIMIT 300").fetchall()
+    msgs = {}
+    if rows:
+        ids = [r[0] for r in rows]
+        for m in conn.execute("SELECT request_id, ts, user, role, text FROM request_messages WHERE request_id IN ("
+                              + ",".join("?" * len(ids)) + ") ORDER BY ts, id", ids):
+            msgs.setdefault(m[0], []).append({"ts": m[1], "user": m[2], "role": m[3], "text": m[4]})
     conn.close()
     h.json(200, {"requests": [{"id": r[0], "ts": r[1], "user": r[2], "text": r[3], "status": r[4], "reply": r[5],
                                "closed_by": r[6], "closed_at": r[7],
                                "flat": flat_label({"blok": r[8], "daire": r[9]}) if r[9] else "",
-                               "category": r[10] or "diger", "has_photo": bool(r[11]), "flat_id": r[12]} for r in rows],
+                               "category": r[10] or "diger", "has_photo": bool(r[11]), "flat_id": r[12],
+                               "messages": msgs.get(r[0], [])} for r in rows],
                  "categories": REQ_CATEGORIES})
 
 
 @route("POST", "/api/requests/close", need="admin")
 def r_request_close(h, qs, user):
     b = h.body()
+    reply = txt(b, "reply", 2000)
     conn = db()
     conn.execute("UPDATE requests SET status='kapali', reply=?, closed_by=?, closed_at=? WHERE id=?",
-                 (txt(b, "reply", 2000), user["name"], time.time(), b.get("id")))
+                 (reply, user["name"], time.time(), b.get("id")))
+    if reply:
+        conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) VALUES (?,?,?, 'admin', ?)",
+                     (b.get("id"), time.time(), user["name"], reply))
     conn.commit()
     conn.close()
+    audit(user, "Talep kapatıldı", f"#{b.get('id')}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/requests/reply", need="admin")
+def r_request_reply(h, qs, user):
+    b = h.body()
+    rid, text = b.get("id"), txt(b, "text", 2000)
+    if not text:
+        raise ValueError("Mesaj yazın")
+    conn = db()
+    r = conn.execute("SELECT status FROM requests WHERE id=?", (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Talep bulunamadı")
+    conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) VALUES (?,?,?, 'admin', ?)",
+                 (rid, time.time(), user["name"], text))
+    status = b.get("status") if b.get("status") in ("acik", "islemde", "kapali") else ("islemde" if r[0] == "acik" else r[0])
+    conn.execute("UPDATE requests SET status=?, reply=?, closed_by=?, closed_at=? WHERE id=?",
+                 (status, text, user["name"] if status == "kapali" else None,
+                  time.time() if status == "kapali" else None, rid))
+    conn.commit()
+    conn.close()
+    audit(user, "Talep yanıtı", f"#{rid} · {status}")
+    h.json(200, {"ok": True, "status": status})
+
+
+@route("POST", "/api/requests/status", need="admin")
+def r_request_status(h, qs, user):
+    b = h.body()
+    status = b.get("status")
+    if status not in ("acik", "islemde", "kapali"):
+        raise ValueError("Durum geçersiz")
+    conn = db()
+    r = conn.execute("SELECT status FROM requests WHERE id=?", (b.get("id"),)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Talep bulunamadı")
+    conn.execute("UPDATE requests SET status=?, closed_by=?, closed_at=? WHERE id=?",
+                 (status, user["name"] if status == "kapali" else None,
+                  time.time() if status == "kapali" else None, b.get("id")))
+    conn.commit()
+    conn.close()
+    audit(user, "Talep durumu", f"#{b.get('id')} · {status}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/my/vehicle", need="user")
+def r_my_vehicle(h, qs, user):
+    if user["role"] != "resident" or not user.get("flat_id"):
+        return h.json(400, {"error": "Bu işlem site sakinleri içindir"})
+    b = h.body()
+    plate = re.sub(r"\s+", " ", txt(b, "plate", 15).translate(TR_FOLD).upper())
+    if len(plate_key(plate)) < 4:
+        raise ValueError("Plaka geçersiz")
+    conn = db()
+    dup = conn.execute("SELECT flat_id FROM vehicles WHERE plate_key=?", (plate_key(plate),)).fetchone()
+    if dup and dup[0] != user["flat_id"]:
+        conn.close()
+        raise ValueError("Bu plaka başka bir dairede kayıtlı")
+    vid = b.get("id")
+    if vid:
+        if not conn.execute("SELECT 1 FROM vehicles WHERE id=? AND flat_id=?", (vid, user["flat_id"])).fetchone():
+            conn.close()
+            raise ValueError("Araç bulunamadı")
+        conn.execute("UPDATE vehicles SET plate=?, plate_key=?, model=?, color=?, parking=? WHERE id=?",
+                     (plate, plate_key(plate), txt(b, "model", 60), txt(b, "color", 30), txt(b, "parking", 20), vid))
+        action = "Araç güncellendi"
+    else:
+        n = conn.execute("SELECT COUNT(*) FROM vehicles WHERE flat_id=?", (user["flat_id"],)).fetchone()[0]
+        if n >= 2:
+            conn.close()
+            raise ValueError("En fazla 2 araç ekleyebilirsiniz")
+        conn.execute("INSERT INTO vehicles (flat_id, plate, plate_key, model, color, parking, sticker) VALUES (?,?,?,?,?,?,'')",
+                     (user["flat_id"], plate, plate_key(plate), txt(b, "model", 60), txt(b, "color", 30), txt(b, "parking", 20)))
+        action = "Araç eklendi"
+    conn.commit()
+    conn.close()
+    audit(user, action, plate)
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/my/vehicle/delete", need="user")
+def r_my_vehicle_delete(h, qs, user):
+    if user["role"] != "resident" or not user.get("flat_id"):
+        return h.json(400, {"error": "Bu işlem site sakinleri içindir"})
+    vid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT plate FROM vehicles WHERE id=? AND flat_id=?", (vid, user["flat_id"])).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Araç bulunamadı")
+    conn.execute("DELETE FROM vehicles WHERE id=?", (vid,))
+    conn.commit()
+    conn.close()
+    audit(user, "Araç silindi", r[0])
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/my/request/reply", need="user")
+def r_my_request_reply(h, qs, user):
+    if user["role"] != "resident" or not user.get("flat_id"):
+        return h.json(400, {"error": "Bu işlem site sakinleri içindir"})
+    b = h.body()
+    rid, text = b.get("id"), txt(b, "text", 2000)
+    if not text:
+        raise ValueError("Mesaj yazın")
+    conn = db()
+    r = conn.execute("SELECT status FROM requests WHERE id=? AND flat_id=?", (rid, user["flat_id"])).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Talep bulunamadı")
+    if r[0] == "kapali":
+        conn.close()
+        raise ValueError("Bu talep kapatılmış; yeni bir talep açın")
+    conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) VALUES (?,?,?, 'resident', ?)",
+                 (rid, time.time(), user["name"], text))
+    conn.execute("UPDATE requests SET status=COALESCE(NULLIF(status,''),'acik') WHERE id=?", (rid,))
+    conn.commit()
+    conn.close()
+    audit(user, "Talep mesajı", f"#{rid}")
     h.json(200, {"ok": True})
 
 
@@ -2857,7 +3103,11 @@ def seed_demo_registry():
     now = time.time()
     conn.execute("INSERT INTO visitors (ts_in, ts_out, name, flat_id, plate, purpose, user) VALUES (?,?,?,?,?,?,?)", (now - 5400, now - 3600, "Kargo görevlisi", 3, "07 KRG 12", "Teslimat", "Demo güvenlik"))
     conn.execute("INSERT INTO visitors (ts_in, ts_out, name, flat_id, plate, purpose, user) VALUES (?,?,?,?,?,?,?)", (now - 1200, None, "Usta (kombi)", 10, "", "Tamir", "Demo güvenlik"))
-    conn.execute("INSERT INTO requests (ts, flat_id, user, text, status) VALUES (?,?,?,?, 'acik')", (now - 86400, 1, "Demo site sakini", "Aracımın plakası değişti: yeni plaka 07 YEN 101."))
+    req_text = "Aracımın plakası değişti: yeni plaka 07 YEN 101."
+    rid = conn.execute("INSERT INTO requests (ts, flat_id, user, text, status) VALUES (?,?,?,?, 'acik')",
+                       (now - 86400, 1, "Demo site sakini", req_text)).lastrowid
+    conn.execute("INSERT INTO request_messages (request_id, ts, user, role, text) VALUES (?,?,?, 'resident', ?)",
+                 (rid, now - 86400, "Demo site sakini", req_text))
     conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('dues', ?)", (json.dumps({**DUES_DEFAULT, "amount": 1500.0, "iban": "TR00 0000 0000 0000 0000 0000 00", "account_name": "Adalya Sitesi Yönetimi (demo)"}),))
     today = datetime.now()
     flats = [r[0] for r in conn.execute("SELECT id FROM flats")]
@@ -2963,6 +3213,12 @@ def seed_demo_comms():
                                            (4, "gelir", "kira", "Ortak alan kira geliri", 2000)]:
         conn.execute("INSERT INTO cash (date, kind, category, label, amount, note, user, ts) VALUES (?,?,?,?,?,'','Demo yönetim',?)",
                      ((today + timedelta(days=-back)).isoformat(), kind, cat, label, amount, now))
+    for kind, title, body, link in [
+        ("duyuru", "Yeni duyuru: Su deposu temizliği", "22 Kasım 09:00–12:00 arası su kesintisi olacak.", "#/duyurular"),
+        ("mesaj", "Aidat hatırlatma", "Kasım aidatı için son ödeme 10 Kasım.", "#/bildirimler"),
+    ]:
+        conn.execute("INSERT INTO notifications (ts, username, kind, title, body, link) VALUES (?,?,?,?,?,?)",
+                     (now - 3600, "demo", kind, title, body, link))
     conn.commit()
     conn.close()
 
@@ -3400,6 +3656,19 @@ def unique_username(name):
             i += 1
         base = f"{base}{i}"
     return base
+
+
+@route("GET", "/demo", need="none")
+def r_demo_role(h, qs, user):
+    """Demo-only: switch the viewed role and continue to a page, e.g. /demo?role=resident&to=/%23/dairem."""
+    role = qs.get("role", "")
+    if role not in ROLES:
+        return h.json(400, {"error": "Rol geçersiz"})
+    to = qs.get("to", "/")
+    if not to.startswith("/"):
+        to = "/"
+    h.raw(302, b"", "text/plain; charset=utf-8",
+          {"Set-Cookie": f"adalya_demo_role={role}; Path=/; SameSite=Strict", "Location": to})
 
 
 @route("GET", "/kayit", need="none")

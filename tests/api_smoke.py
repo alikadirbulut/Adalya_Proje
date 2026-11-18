@@ -433,6 +433,48 @@ for nm, ph in (("Ikinci Sakin", "0533 111 22 33"), ("Ucuncu Sakin", "0533 444 55
         check("third account on flat refused", call("/api/registrations/approve", "admin", {"id": e2["id"]})[0] == 400)
         check("third account with force allowed", call("/api/registrations/approve", "admin", {"id": e2["id"], "force": True})[0] == 200)
 
+# ---------------------------------------------------------------- request conversation, notifications, resident cars
+c, mine = call("/api/my", "resident")
+check("request threads present", all("messages" in q for q in mine["requests"]))
+call("/api/my/request", "resident", {"text": "Asansör ses yapıyor", "category": "asansor"})
+c, mine = call("/api/my", "resident")
+q = mine["requests"][0]
+check("new request has first message", q["messages"] and q["messages"][0]["text"].startswith("Asansör"), q)
+check("admin reply moves to in progress", call("/api/requests/reply", "admin", {"id": q["id"], "text": "Yarın bakacağız", "status": "islemde"})[0] == 200)
+c, allq = call("/api/requests", "admin")
+qq = next(x for x in allq["requests"] if x["id"] == q["id"])
+check("thread keeps both messages", qq["status"] == "islemde" and len(qq["messages"]) >= 2, qq)
+check("resident follow-up accepted", call("/api/my/request/reply", "resident", {"id": q["id"], "text": "Teşekkürler"})[0] == 200)
+c, allq = call("/api/requests", "admin")
+qq = next(x for x in allq["requests"] if x["id"] == q["id"])
+check("follow-up appended", len(qq["messages"]) >= 3, len(qq["messages"]))
+call("/api/requests/close", "admin", {"id": q["id"], "reply": "Kapatıldı"})
+check("closed request blocks resident reply", call("/api/my/request/reply", "resident", {"id": q["id"], "text": "tekrar"})[0] == 400)
+
+c, nt = call("/api/notifications", "resident")
+check("resident notifications available", c == 200 and len(nt["notifications"]) >= 2 and nt["unread"] >= 2, nt)
+check("notifications mark all read", call("/api/notifications/read", "resident", {"all": True})[0] == 200)
+c, nt = call("/api/notifications", "resident")
+check("notifications unread cleared", nt["unread"] == 0, nt)
+check("admin sends in-app notification", call("/api/notifications/app", "admin", {"flat_ids": [1], "title": "Test", "body": "Deneme"})[0] == 200)
+
+c, mine = call("/api/my", "resident")
+for v in mine["flat"]["vehicles"]:
+    call("/api/my/vehicle/delete", "resident", {"id": v["id"]})
+check("resident adds a car", call("/api/my/vehicle", "resident", {"plate": "07 TST 01", "model": "Test"})[0] == 200)
+c, mine = call("/api/my", "resident")
+v = mine["flat"]["vehicles"][0]
+check("resident edits own car", call("/api/my/vehicle", "resident", {"id": v["id"], "plate": "07 TST 01", "model": "Yeni model"})[0] == 200)
+check("second car allowed", call("/api/my/vehicle", "resident", {"plate": "07 TST 02"})[0] == 200)
+check("third car refused", call("/api/my/vehicle", "resident", {"plate": "07 TST 03"})[0] == 400)
+
+c, mf = call("/manifest.webmanifest", "none")
+if isinstance(mf, bytes):
+    mf = json.loads(mf)
+check("manifest lists png icons", c == 200 and any(i["src"] == "/icon-512.png" for i in mf["icons"]), mf)
+c, png = call("/icon-192.png", "none")
+check("png icon served", c == 200 and png[:4] == b"\x89PNG", c)
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}

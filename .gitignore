@@ -12,3 +12,5 @@ __pycache__/
 
 # Replaced memorial photos
 media/*.eski
+
+data-backup-*/
