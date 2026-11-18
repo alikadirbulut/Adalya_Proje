@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.2"
+VERSION = "2.3"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS contracts (id INTEGER PRIMARY KEY, name TEXT, kind TE
     end_date TEXT, amount REAL, note TEXT, doc_id INTEGER, user TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, name TEXT, kind TEXT, stored TEXT, size INTEGER,
     note TEXT, user TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, ts REAL, title TEXT, body TEXT, kind TEXT,
+    pinned INTEGER DEFAULT 0, user TEXT);
+CREATE TABLE IF NOT EXISTS announcement_reads (ann_id INTEGER, username TEXT, ts REAL, PRIMARY KEY (ann_id, username));
+CREATE TABLE IF NOT EXISTS guest_passes (id INTEGER PRIMARY KEY, flat_id INTEGER, name TEXT, plate TEXT, note TEXT,
+    valid_from TEXT, valid_to TEXT, created_by TEXT, ts REAL, used_ts REAL, used_by TEXT);
+CREATE TABLE IF NOT EXISTS packages (id INTEGER PRIMARY KEY, flat_id INTEGER, courier TEXT, note TEXT,
+    ts_in REAL, ts_out REAL, user TEXT);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -434,7 +441,7 @@ def r_index(h, qs, user):
 @route("GET", "/api/me", need="none")
 def r_me(h, qs, user):
     if user and user["role"] == "resident":
-        user = {**user, "cams": len(allowed_channels(user.get("flat_id")))}
+        user = {**user, "cams": len(allowed_channels(user.get("flat_id"))), "unread": unread_announcements(user["username"])}
     h.json(200, {"setup_needed": not args.demo and not admins(), "user": user, "demo": args.demo,
                  "site": site_payload(bool(user)), "version": VERSION, "lan": args.lan})
 
@@ -1389,6 +1396,281 @@ def r_document_delete(h, qs, user):
     h.json(200, {"ok": True})
 
 
+# ---------------------------------------------------------------- announcements, guest passes, packages
+# Announcements and guest passes are personal-data light but still KVKK-relevant: the gate sees
+# only name, plate and flat; read receipts are usernames, never exposed to residents.
+
+ANN_KINDS = {"duyuru": "Duyuru", "ariza": "Arıza / kesinti", "toplanti": "Toplantı", "guvenlik": "Güvenlik"}
+
+
+def user_name(username):
+    rec = cfg.get("users", {}).get(username)
+    return rec.get("name", username) if isinstance(rec, dict) else username
+
+
+def unread_announcements(username):
+    conn = db()
+    n = conn.execute("SELECT COUNT(*) FROM announcements a WHERE NOT EXISTS "
+                     "(SELECT 1 FROM announcement_reads r WHERE r.ann_id=a.id AND r.username=?)", (username,)).fetchone()[0]
+    conn.close()
+    return n
+
+
+def pass_state(p, now_str):
+    if p.get("used_ts"):
+        return "used"
+    if (p.get("valid_to") or "") < now_str:
+        return "expired"
+    if (p.get("valid_from") or "") > now_str:
+        return "upcoming"
+    return "active"
+
+
+@route("GET", "/api/announcements", need="user")
+def r_announcements(h, qs, user):
+    conn = db()
+    rows = conn.execute("SELECT id, ts, title, body, kind, pinned, user FROM announcements "
+                        "ORDER BY pinned DESC, ts DESC").fetchall()
+    reads = {}
+    for aid, uname in conn.execute("SELECT ann_id, username FROM announcement_reads"):
+        reads.setdefault(aid, []).append(uname)
+    mine = {r[0] for r in conn.execute("SELECT ann_id FROM announcement_reads WHERE username=?", (user["username"],))}
+    conn.close()
+    is_admin = user["role"] == "admin"
+    out = []
+    for r in rows:
+        d = {"id": r[0], "ts": r[1], "title": r[2], "body": r[3], "kind": r[4], "pinned": bool(r[5]),
+             "user": r[6] or "", "read": r[0] in mine, "read_count": len(reads.get(r[0], []))}
+        if is_admin:
+            d["readers"] = [user_name(u) for u in sorted(reads.get(r[0], []))]
+        out.append(d)
+    h.json(200, {"announcements": out, "kinds": ANN_KINDS})
+
+
+@route("POST", "/api/announcements", need="admin")
+def r_announcement_save(h, qs, user):
+    b = h.body()
+    title, body = txt(b, "title", 140), txt(b, "body", 4000)
+    if not title:
+        raise ValueError("Başlık gerekli")
+    if not body:
+        raise ValueError("Duyuru metni gerekli")
+    kind = b.get("kind") if b.get("kind") in ANN_KINDS else "duyuru"
+    pinned = 1 if b.get("pinned") else 0
+    try:
+        aid = int(b.get("id") or 0)
+    except (TypeError, ValueError):
+        aid = 0
+    conn = db()
+    if aid:
+        cur = conn.execute("UPDATE announcements SET title=?, body=?, kind=?, pinned=? WHERE id=?",
+                           (title, body, kind, pinned, aid))
+        if not cur.rowcount:
+            conn.close()
+            raise ValueError("Duyuru bulunamadı")
+    else:
+        aid = conn.execute("INSERT INTO announcements (ts, title, body, kind, pinned, user) VALUES (?,?,?,?,?,?)",
+                           (time.time(), title, body, kind, pinned, user["name"])).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "Duyuru", f"{'Düzenlendi' if aid and b.get('id') else 'Yayınlandı'}: {title}")
+    h.json(200, {"ok": True, "id": aid})
+
+
+@route("POST", "/api/announcements/delete", need="admin")
+def r_announcement_delete(h, qs, user):
+    aid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT title FROM announcements WHERE id=?", (aid,)).fetchone()
+    if not r:
+        conn.close()
+        return h.json(404, {"error": "Duyuru bulunamadı"})
+    conn.execute("DELETE FROM announcements WHERE id=?", (aid,))
+    conn.execute("DELETE FROM announcement_reads WHERE ann_id=?", (aid,))
+    conn.commit()
+    conn.close()
+    audit(user, "Duyuru", f"Silindi: {r[0]}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/announcements/read", need="user")
+def r_announcement_read(h, qs, user):
+    aid = h.body().get("id")
+    conn = db()
+    if not conn.execute("SELECT 1 FROM announcements WHERE id=?", (aid,)).fetchone():
+        conn.close()
+        raise ValueError("Duyuru bulunamadı")
+    conn.execute("INSERT OR IGNORE INTO announcement_reads (ann_id, username, ts) VALUES (?,?,?)",
+                 (aid, user["username"], time.time()))
+    conn.commit()
+    conn.close()
+    h.json(200, {"ok": True})
+
+
+def guest_pass_rows(conn, where, args):
+    rows = conn.execute("SELECT g.id, g.flat_id, g.name, g.plate, g.note, g.valid_from, g.valid_to, g.created_by, "
+                        "g.ts, g.used_ts, g.used_by, f.blok, f.daire FROM guest_passes g "
+                        "LEFT JOIN flats f ON f.id=g.flat_id " + where +
+                        " ORDER BY (g.used_ts IS NOT NULL), g.valid_from LIMIT 100", args).fetchall()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    out = []
+    for r in rows:
+        p = {"id": r[0], "flat_id": r[1], "name": r[2], "plate": r[3] or "", "note": r[4] or "",
+             "valid_from": r[5], "valid_to": r[6], "created_by": r[7] or "", "ts": r[8],
+             "used_ts": r[9], "used_by": r[10] or "",
+             "flat": flat_label({"blok": r[11], "daire": r[12]}) if r[12] else ""}
+        p["status"] = pass_state(p, now_str)
+        out.append(p)
+    return out
+
+
+@route("GET", "/api/guest-passes", need="user")
+def r_guest_passes(h, qs, user):
+    conn = db()
+    if user["role"] == "resident":
+        if not user.get("flat_id"):
+            conn.close()
+            return h.json(200, {"passes": []})
+        passes = guest_pass_rows(conn, "WHERE g.flat_id=?", (user["flat_id"],))
+    else:
+        day = dparam(qs, "date", datetime.now().strftime("%Y-%m-%d")).strftime("%Y-%m-%d")
+        passes = guest_pass_rows(conn, "WHERE substr(g.valid_from,1,10)<=? AND substr(g.valid_to,1,10)>=?", (day, day))
+    conn.close()
+    h.json(200, {"passes": passes})
+
+
+@route("POST", "/api/guest-passes", need="user")
+def r_guest_pass_add(h, qs, user):
+    b = h.body()
+    name = txt(b, "name", 80)
+    if not name:
+        raise ValueError("Ziyaretçi adı gerekli")
+    if user["role"] == "resident":
+        flat_id = user.get("flat_id")
+        if not flat_id:
+            raise ValueError("Hesabınız bir daireye bağlı değil")
+    else:
+        try:
+            flat_id = int(b.get("flat_id"))
+        except (TypeError, ValueError):
+            raise ValueError("Daire seçin")
+    date = opt_date(b, "date") or datetime.now().strftime("%Y-%m-%d")
+    frm, to = str(b.get("from") or "09:00"), str(b.get("to") or "23:59")
+    for v, lbl in ((frm, "Başlangıç"), (to, "Bitiş")):
+        if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", v):
+            raise ValueError(f"{lbl} saati SS:DD olmalı")
+    if to <= frm:
+        raise ValueError("Bitiş saati başlangıçtan sonra olmalı")
+    plate = re.sub(r"\s+", " ", str(b.get("plate") or "")).strip().upper()[:12]
+    note = txt(b, "note", 200)
+    conn = db()
+    gid = conn.execute("INSERT INTO guest_passes (flat_id, name, plate, note, valid_from, valid_to, created_by, ts) "
+                       "VALUES (?,?,?,?,?,?,?,?)",
+                       (flat_id, name, plate, note, f"{date} {frm}", f"{date} {to}", user["name"], time.time())).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "Ziyaretçi izni", f"{name} · {date} {frm}-{to}")
+    h.json(200, {"ok": True, "id": gid})
+
+
+@route("POST", "/api/guest-passes/use", need="staff")
+def r_guest_pass_use(h, qs, user):
+    gid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT name, used_ts FROM guest_passes WHERE id=?", (gid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("İzin bulunamadı")
+    if r[1]:
+        conn.close()
+        raise ValueError("Bu izin zaten kullanıldı")
+    conn.execute("UPDATE guest_passes SET used_ts=?, used_by=? WHERE id=?", (time.time(), user["name"], gid))
+    conn.commit()
+    conn.close()
+    audit(user, "Ziyaretçi izni", f"Giriş kaydedildi: {r[0]}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/guest-passes/delete", need="user")
+def r_guest_pass_delete(h, qs, user):
+    gid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT name, flat_id FROM guest_passes WHERE id=?", (gid,)).fetchone()
+    if not r:
+        conn.close()
+        return h.json(404, {"error": "İzin bulunamadı"})
+    if user["role"] == "resident" and r[1] != user.get("flat_id"):
+        conn.close()
+        return h.json(403, {"error": "Bu izin size ait değil"})
+    conn.execute("DELETE FROM guest_passes WHERE id=?", (gid,))
+    conn.commit()
+    conn.close()
+    audit(user, "Ziyaretçi izni", f"Silindi: {r[0]}")
+    h.json(200, {"ok": True})
+
+
+def package_rows(conn, where, args):
+    rows = conn.execute("SELECT p.id, p.flat_id, p.courier, p.note, p.ts_in, p.ts_out, p.user, f.blok, f.daire "
+                        "FROM packages p LEFT JOIN flats f ON f.id=p.flat_id " + where +
+                        " ORDER BY (p.ts_out IS NOT NULL), p.ts_in DESC LIMIT 100", args).fetchall()
+    return [{"id": r[0], "flat_id": r[1], "courier": r[2] or "", "note": r[3] or "", "ts_in": r[4],
+             "ts_out": r[5], "user": r[6] or "",
+             "flat": flat_label({"blok": r[7], "daire": r[8]}) if r[8] else ""} for r in rows]
+
+
+@route("GET", "/api/packages", need="user")
+def r_packages(h, qs, user):
+    conn = db()
+    if user["role"] == "resident":
+        if not user.get("flat_id"):
+            conn.close()
+            return h.json(200, {"packages": []})
+        rows = package_rows(conn, "WHERE p.flat_id=?", (user["flat_id"],))
+    else:
+        rows = package_rows(conn, "WHERE p.ts_in >= ?", (time.time() - 86400,))
+    conn.close()
+    h.json(200, {"packages": rows})
+
+
+@route("POST", "/api/packages", need="staff")
+def r_package_add(h, qs, user):
+    b = h.body()
+    try:
+        flat_id = int(b.get("flat_id"))
+    except (TypeError, ValueError):
+        raise ValueError("Daire seçin")
+    courier = txt(b, "courier", 60)
+    note = txt(b, "note", 200)
+    if not courier:
+        raise ValueError("Kargo / gönderi adı gerekli")
+    conn = db()
+    ok = conn.execute("SELECT 1 FROM flats WHERE id=?", (flat_id,)).fetchone()
+    if not ok:
+        conn.close()
+        raise ValueError("Daire bulunamadı")
+    pid = conn.execute("INSERT INTO packages (flat_id, courier, note, ts_in, user) VALUES (?,?,?,?,?)",
+                       (flat_id, courier, note, time.time(), user["name"])).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "Kargo", f"{courier} · daire {flat_id}")
+    h.json(200, {"ok": True, "id": pid})
+
+
+@route("POST", "/api/packages/out", need="staff")
+def r_package_out(h, qs, user):
+    pid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT courier FROM packages WHERE id=? AND ts_out IS NULL", (pid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Kargo kaydı bulunamadı veya teslim edilmiş")
+    conn.execute("UPDATE packages SET ts_out=? WHERE id=?", (time.time(), pid))
+    conn.commit()
+    conn.close()
+    audit(user, "Kargo", f"Teslim: {r[0]}")
+    h.json(200, {"ok": True})
+
+
 # ---------------------------------------------------------------- residents registry (KVKK: personal data)
 
 KINDS = {"malik": "Malik", "kiraci": "Kiracı", "hane": "Hane üyesi"}
@@ -1955,6 +2237,42 @@ def seed_demo_management():
     for key in ("defter", "isletme"):
         conn.execute("INSERT OR REPLACE INTO duty_done (duty_key, year, ts, user) VALUES (?,?,?,?)",
                      (key, today.year, now, "Demo"))
+    conn.commit()
+    conn.close()
+
+
+def seed_demo_comms():
+    """Fictional announcements, guest passes and packages for demo mode."""
+    today = datetime.now().date()
+    iso = lambda n: (today + timedelta(days=n)).isoformat()
+    now = time.time()
+    conn = db()
+    anns = [
+        (now - 2 * 86400, "Su deposu temizliği",
+         "22 Kasım Cumartesi 09:00–12:00 arasında su kesintisi olacak. Depolar temizlendikten sonra suyu birkaç dakika akıtmanız önerilir.",
+         "ariza", 1),
+        (now - 5 * 86400, "Olağan genel kurul",
+         "31 Ocak 2027 Cumartesi 19:00 · site yemekhanesi. Gündem: 2026 hesap raporu, 2027 işletme projesi, asansör bakım sözleşmesi.",
+         "toplanti", 0),
+        (now - 9 * 86400, "Otopark kuralları",
+         "Misafir araçlar için girişte plaka bildirimi yapılması rica olunur. Yangın yolunu kapatmayınız.",
+         "duyuru", 0),
+    ]
+    ids = []
+    for ts, title, body, kind, pinned in anns:
+        ids.append(conn.execute("INSERT INTO announcements (ts, title, body, kind, pinned, user) "
+                                "VALUES (?,?,?,?,?,'Demo yönetim')", (ts, title, body, kind, pinned)).lastrowid)
+    conn.execute("INSERT OR IGNORE INTO announcement_reads (ann_id, username, ts) VALUES (?,?,?)", (ids[0], "demo", now))
+    for flat_id, name, plate, note, frm, to in [
+        (1, "Mehmet Yılmaz", "07 ABC 123", "Aile ziyareti", "18:00", "23:00"),
+        (2, "Kombi servisi", "34 SRV 12", "B Blok 3", "09:00", "17:00"),
+    ]:
+        conn.execute("INSERT INTO guest_passes (flat_id, name, plate, note, valid_from, valid_to, created_by, ts) "
+                     "VALUES (?,?,?,?,?,?,?,?)",
+                     (flat_id, name, plate, note, f"{iso(0)} {frm}", f"{iso(0)} {to}", "Demo sakin", now))
+    for flat_id, courier, note, back in [(1, "Kargo (demo)", "2 paket", 3600), (3, "Market", "1 poşet", 7200)]:
+        conn.execute("INSERT INTO packages (flat_id, courier, note, ts_in, user) VALUES (?,?,?,?,?)",
+                     (flat_id, courier, note, now - back, "Demo güvenlik"))
     conn.commit()
     conn.close()
 
@@ -2528,6 +2846,7 @@ def main():
     if args.demo:
         seed_demo_registry()
         seed_demo_management()
+        seed_demo_comms()
 
     if args.demo:
         nvr = DemoNvr(channel_names())
