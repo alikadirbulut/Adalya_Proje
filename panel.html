@@ -426,6 +426,7 @@ const TYPE_TR = { camera: "Kamera", router: "Router", switch: "Switch", nvr: "NV
 const isAdmin = () => S.me?.user?.role === "admin";
 const MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 const trDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ""); return m ? `${+m[3]} ${MONTHS[+m[2] - 1]} ${m[1]}` : ""; };
+const fmtPhone = p => { const d = String(p || "").replace(/\D/g, ""); return d.length === 10 ? `0${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6, 8)} ${d.slice(8)}` : String(p || ""); };
 function trGen(name) {
   name = (name || "").trim(); if (!name) return "";
   const vs = [...name.toLocaleLowerCase("tr")].filter(c => "aıoueiöü".includes(c));
@@ -524,19 +525,20 @@ const pinColor = l => ({ ok: "var(--pin-ok)", warn: "var(--pin-warn)", bad: "var
 /* Menu: [group, open by default, items]. Item roles: S = yönetici + güvenlik, A = yalnız yönetici, R = site sakini,
    C = site sakini too, but only when the manager has given their flat at least one camera. */
 const NAV = [
-  ["Sitem", true, [["dairem", "Dairem", "R"]]],
-  ["İzleme", true, [["genel", "Bugün", "S"], ["vardiya", "Vardiya ekranı", "S"], ["canli", "Canlı izleme", "SC"], ["kameralar", "Kameralar", "S"], ["harita", "Site haritası", "SC"]]],
-  ["Kayıt ve kanıt", false, [["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olaylar ve loglar", "S"], ["disa", "Dışa aktar", "S"]]],
-  ["Sakinler", false, [["sakinler", "Daireler ve kişiler", "S"], ["aidat", "Aidat ve tahsilat", "A"], ["ziyaret", "Ziyaretçi ve araç", "S"], ["mesaj", "Mesaj gönder", "A"], ["talepler", "Talepler", "A"], ["kamerayetki", "Sakin kamera erişimi", "A"]]],
-  ["İletişim", false, [["duyurular", "Duyurular", "SAR"]]],
-  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["isletme", "İşletme projesi", "A"], ["gelirgider", "Gelir-gider", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
-  ["Teknik", false, [["ag", "Ağ cihazları", "S"], ["yedekler", "Yedekler", "A"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
-  ["Hakkında", false, [["proje", "Proje", "SR"]]],
+  ["Site", true, [["dairem", "Dairem", "R"]]],
+  ["Genel", true, [["genel", "Bugün", "S"], ["harita", "Site haritası", "SC"]]],
+  ["Kamera ve güvenlik", true, [["vardiya", "Vardiya ekranı", "S"], ["canli", "Canlı izleme", "SC"], ["kameralar", "Kameralar", "S"], ["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olay geçmişi", "S"], ["disa", "Dışa aktar", "S"], ["ziyaret", "Ziyaretçi ve araç", "S"]]],
+  ["Site sakinleri", false, [["sakinler", "Daireler ve sakinler", "S"], ["kayittalepleri", "Kayıt istekleri", "A"], ["talepler", "İstekler", "A"], ["duyurular", "Duyurular", "SAR"], ["mesaj", "Mesaj gönder", "A"], ["kamerayetki", "Sakinlerin kamera izni", "A"]]],
+  ["Ödemeler", false, [["aidat", "Aidat ve ödemeler", "A"], ["isletme", "Yıllık bütçe", "A"], ["gelirgider", "Gelir-gider", "A"]]],
+  ["Site işleri", false, [["takvim", "Takvim ve işler", "A"], ["sozlesmeler", "Sözleşmeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
+  ["Sistem", false, [["kullanicilar", "Kullanıcılar ve cihazlar", "A"], ["ag", "Ağ cihazları", "S"], ["yedekler", "Yedekler", "A"], ["nvr", "Kayıt cihazı (NVR)", "S"], ["ayarlar", "Ayarlar", "S"]]],
+  ["Proje", false, [["proje", "Proje", "SR"]]],
 ];
 const ROLE_TR = { admin: "Yönetici", staff: "Güvenlik", resident: "Site sakini" };
 const role = () => S.me?.user?.role;
 const isResident = () => role() === "resident";
 function canSee(page) {
+  if (page === "daire") return role() === "admin";
   const it = NAV.flatMap(g => g[2]).find(i => i[0] === page); if (!it) return false;
   const r = role(), need = it[2];
   if (r === "resident") return need.includes("R") || (need.includes("C") && (S.me.user.cams || 0) > 0);
@@ -649,6 +651,8 @@ async function poll() {
     if (b) b.innerHTML = down ? `<span class="nb">${down}</span>` : "";
     const nb = $('[data-badge="nvr"]');
     if (nb) nb.innerHTML = S.status.nvr.connected ? "" : '<span class="nb">!</span>';
+    const rb = $('[data-badge="kayittalepleri"]');
+    if (rb) rb.innerHTML = (S.me.user.pending_regs || 0) ? `<span class="nb">${S.me.user.pending_regs}</span>` : "";
     if (!S.dragging) PAGES[S.page].onStatus?.();
   } catch (e) {
     const ld = $("#liveDot"), lt = $("#liveText");
@@ -944,6 +948,14 @@ PAGES.vardiya = {
       </div>
       <div class="shift">
         <div>
+          <div class="card"><div class="card-h"><h2>Hızlı misafir girişi</h2><span class="hint">Tek form, defter yok</span></div>
+            <div class="form">
+              <div><label for="qgName">Ad</label><input id="qgName" maxlength="80" placeholder="Misafir adı"></div>
+              <div><label for="qgFlat">Daire</label><select id="qgFlat"><option value="">– seçin –</option></select></div>
+              <div><label for="qgPlate">Plaka</label><input id="qgPlate" maxlength="12"></div>
+              <div style="flex:1;min-width:130px"><label for="qgPurpose">Amaç</label><input id="qgPurpose" maxlength="60" placeholder="Ziyaret"></div>
+              <button class="primary" id="qgGo">Giriş</button>
+            </div><div class="err" id="qgErr"></div></div>
           <div class="card"><label for="plQ">Plaka sorgula</label>
             <div class="platebox"><input id="plQ" placeholder="07 ABC 123" autocomplete="off" spellcheck="false"><button class="primary" id="plGo">Sorgula</button></div>
             <div class="hint" style="margin-top:7px">Kısmi plaka da aranır: “07 ABC” yeterli.</div>
@@ -960,6 +972,21 @@ PAGES.vardiya = {
     $("#plGo").onclick = () => this.lookup();
     $("#plQ").onkeydown = e => { if (e.key === "Enter") this.lookup(); };
     $("#plQ").focus();
+    loadRegistry().then(fl => {
+      const sel = $("#qgFlat");
+      if (sel) sel.innerHTML = '<option value="">– seçin –</option>' + fl.map(f => `<option value="${f.id}">${esc(flatName(f))}</option>`).join("");
+    }).catch(() => {});
+    $("#qgGo").onclick = async () => {
+      $("#qgErr").textContent = "";
+      const name = $("#qgName").value.trim(), flat = +$("#qgFlat").value;
+      if (!name) { $("#qgErr").textContent = "Misafir adı gerekli."; return; }
+      if (!flat) { $("#qgErr").textContent = "Daire seçin."; return; }
+      try {
+        await post("/api/visitors", { name, flat_id: flat, plate: $("#qgPlate").value, purpose: $("#qgPurpose").value || "Ziyaret" });
+        $("#qgName").value = ""; $("#qgPlate").value = ""; $("#qgPurpose").value = ""; $("#qgFlat").value = "";
+        this.loadVisitors();
+      } catch (e) { $("#qgErr").textContent = e.message; }
+    };
     if (n.connected) { this.loadCams(); every(() => this.loadCams(), 4000); }
     this.loadVisitors();
     this.loadPasses();
@@ -1578,10 +1605,10 @@ PAGES.sakinler = {
   q: "", blok: "",
   render(el) {
     const A = isAdmin();
-    el.innerHTML = head("Daireler ve kişiler", A ? "Daireler, malik ve kiracılar, araçlar" : "Sakinlerin iletişim bilgileri ve araçları") + `
+    el.innerHTML = head("Daireler ve sakinler", A ? "Daireler, mülk sahipleri, kiracılar ve araçlar" : "Sakinlerin iletişim bilgileri ve araçları") + `
       <section class="metrics" id="regMetrics"></section>
       ${A ? `<div class="card" id="impCard" style="display:none"><h2>Excel veya CSV'den içe aktar</h2>
-        <div class="prose" style="font-size:13px"><p>Her satır bir kişi ve/veya bir araç; daire bilgileri her satırda tekrarlanır. Sütun adları: <span class="mono">Blok, Kapı, Daire, Arsa payı, Ad soyad, Telefon, E-posta, Durum (Malik/Kiracı/Hane üyesi), Giriş tarihi, Acil durum kişisi, Plaka, Marka model, Renk, Otopark, Etiket no</span>. En az <b>Daire</b> sütunu gerekli; olmayan sütunlar atlanır. Var olan daire, kişi (aynı dairede aynı ad) ve araç (aynı plaka) güncellenir, silinmez.</p></div>
+        <div class="prose" style="font-size:13px"><p>Her satır bir kişi ve/veya bir araç; daire bilgileri her satırda tekrarlanır. Sütun adları: <span class="mono">Blok, Kapı, Daire, Ad soyad, Telefon, E-posta, Durum (Mülk sahibi/Kiracı/Hane üyesi), Giriş tarihi, Acil durum kişisi, Plaka, Marka model, Renk, Otopark, Etiket no</span>. En az <b>Daire</b> sütunu gerekli; olmayan sütunlar atlanır. Var olan daire, kişi (aynı dairede aynı ad) ve araç (aynı plaka) güncellenir, silinmez.</p></div>
         <div class="form"><div><label for="impFile">Dosya (.xlsx veya .csv)</label><input type="file" id="impFile" accept=".xlsx,.csv,text/csv"></div>
           <a class="btn" href="/api/registry-template.csv" target="_blank" rel="noopener">Şablonu indir</a>
           <button class="primary" id="impGo" disabled>İçe aktar</button><button id="impClose">Kapat</button></div>
@@ -1629,12 +1656,12 @@ PAGES.sakinler = {
       f.vehicles.some(v => fold(v.plate).includes(q))));
     $("#regRows").innerHTML = list.map(f => `<tr>
       ${A ? `<td><input type="checkbox" data-sel="${f.id}" ${this.sel[f.id] ? "checked" : ""} aria-label="${esc(flatName(f))} seç"></td>` : ""}
-      <td style="white-space:nowrap"><b>${esc(flatName(f))}</b>${f.kapi ? `<div class="hint">Kapı ${esc(f.kapi)}</div>` : ""}${A && f.arsa_payi != null ? `<div class="hint">Arsa payı ${f.arsa_payi}</div>` : ""}</td>
+      <td style="white-space:nowrap"><b>${esc(flatName(f))}</b>${f.kapi ? `<div class="hint">Kapı ${esc(f.kapi)}</div>` : ""}${f.kat ? `<div class="hint">Kat ${esc(f.kat)}</div>` : ""}</td>
       <td>${f.people.map(p => `<div${p.move_out ? ' style="opacity:.55"' : ""}>${esc(p.name)} <span class="pill unk">${KIND_TR[p.kind] || ""}</span> ${telLink(p.phone)}${p.move_out ? ` <span class="hint">· çıktı ${esc(p.move_out)}</span>` : ""}${p.emergency ? `<div class="hint">Acil: ${esc(p.emergency)}</div>` : ""}</div>`).join("") || '<span class="hint">–</span>'}</td>
       <td>${f.vehicles.map(v => `<div><span class="mono">${esc(v.plate)}</span> <span class="hint">${esc([v.model, v.color, v.parking && "park " + v.parking].filter(Boolean).join(" · "))}</span></div>`).join("") || '<span class="hint">–</span>'}</td>
       ${A ? `<td>${duesPill(duesOf(f))}${duesOf(f)?.balance > 0 ? `<div style="margin-top:4px">${remindBtn(f)}</div>` : ""}</td><td style="text-align:right"><button data-fe="${f.id}">Düzenle</button></td>` : ""}</tr>`).join("")
       || `<tr><td colspan="6" class="empty">${S.reg?.length ? "Bu aramaya veya filtreye uyan daire yok." : (A ? "Henüz daire yok. Excel listesini içe aktarın veya daire ekleyin." : "Henüz sakin kaydı yok.")}</td></tr>`;
-    $$("[data-fe]").forEach(b => b.onclick = () => this.editFlat(+b.dataset.fe));
+    $$("[data-fe]").forEach(b => b.onclick = () => { location.hash = "#/daire?id=" + b.dataset.fe; });
     if (!A) return;
     $$("#regRows [data-sel]").forEach(c => c.onchange = () => { this.sel[c.dataset.sel] = c.checked; this.bulk(); });
     bindRemind($("#regRows"));
@@ -1646,7 +1673,7 @@ PAGES.sakinler = {
     box.style.display = "";
     box.innerHTML = `<h2><span>${id ? esc(flatName(f)) : "Yeni daire"}</span><span>${id ? '<button id="feDel">Daireyi sil</button> ' : ""}<button id="feClose">Kapat</button></span></h2>
       <div class="form">${field("feBlok", "Blok", f.blok, 'style="width:70px"')}${field("feKapi", "Kapı", f.kapi, 'style="width:70px"')}${field("feDaire", "Daire", f.daire, 'style="width:80px"')}
-        ${field("feAp", "Arsa payı", f.arsa_payi ?? "", 'style="width:100px" placeholder="ör. 12.5"')}<div style="flex:1;min-width:200px"><label for="feNotes">Not</label><input id="feNotes" value="${esc(f.notes)}"></div>
+        ${field("feKat", "Kat", f.kat ?? "", 'style="width:70px"')}<div style="flex:1;min-width:200px"><label for="feNotes">Not</label><input id="feNotes" value="${esc(f.notes)}"></div>
         <button class="primary" id="feSave">${id ? "Kaydet" : "Daireyi ekle"}</button></div><div class="err" id="feErr"></div>
       ${id ? `<h3>Kişiler</h3><div id="fePeople"></div>
         <div class="form" style="margin-top:8px">${field("pName", "Ad soyad")}<div><label for="pKind">Durum</label><select id="pKind">${Object.entries(KIND_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
@@ -1663,7 +1690,7 @@ PAGES.sakinler = {
     $("#feClose").onclick = () => { box.style.display = "none"; };
     $("#feSave").onclick = async () => {
       try {
-        const r = await post("/api/flats", { id, blok: $("#feBlok").value, kapi: $("#feKapi").value, daire: $("#feDaire").value, arsa_payi: $("#feAp").value, notes: $("#feNotes").value });
+        const r = await post("/api/flats", { id, blok: $("#feBlok").value, kapi: $("#feKapi").value, daire: $("#feDaire").value, kat: $("#feKat").value, notes: $("#feNotes").value });
         await this.load(); this.editFlat(r.id);
       } catch (e) { $("#feErr").textContent = e.message; }
     };
@@ -1747,6 +1774,245 @@ PAGES.sakinler = {
   },
 };
 
+/* ------------------------------------------------------------------ flat detail page */
+
+PAGES.daire = {
+  async render(el, params) {
+    const id = +params.get("id");
+    if (!id || !isAdmin()) { location.hash = "#/sakinler"; return; }
+    el.innerHTML = '<div class="empty">Yükleniyor…</div>';
+    this.id = id;
+    try {
+      await Promise.all([loadRegistry(), loadDues()]);
+      const [u, rq] = await Promise.all([api("/api/users"), api("/api/requests")]);
+      this.users = u.users;
+      this.requests = rq.requests;
+    } catch (e) { el.innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; return; }
+    this.draw(el);
+  },
+  flat() { return (S.reg || []).find(f => f.id === this.id); },
+  async reload() { this.render($("#main"), new URLSearchParams("id=" + this.id)); },
+  draw(el) {
+    const f = this.flat();
+    if (!f) { el.innerHTML = '<div class="card"><div class="empty">Daire bulunamadı.</div></div>'; return; }
+    const accounts = (this.users || []).filter(u => u.role === "resident" && u.flat_id === f.id);
+    const reqs = (this.requests || []).filter(r => r.flat_id === f.id);
+    const st = duesOf(f);
+    el.innerHTML = `
+      <div class="pagehead"><div><h1>${esc(flatName(f))}</h1><div class="sub">${f.kat ? "Kat " + esc(f.kat) + " · " : ""}${f.kapi ? "Kapı " + esc(f.kapi) + " · " : ""}${f.people.filter(p => !p.move_out).length} kişi · ${f.vehicles.length} araç · ${accounts.length} hesap</div></div>
+        <div class="head-actions"><a class="btn" href="#/sakinler">‹ Daireler</a><a class="btn" href="#/mesaj?flat=${f.id}">Mesaj gönder</a><a class="btn primary" href="#/aidat?flat=${f.id}">Aidat</a></div></div>
+
+      <div class="card"><div class="card-h"><h2>Daire bilgileri</h2></div>
+        <div class="form">
+          <div><label for="fdBlok">Blok</label><input id="fdBlok" value="${esc(f.blok)}" style="width:70px"></div>
+          <div><label for="fdDaire">Daire</label><input id="fdDaire" value="${esc(f.daire)}" style="width:80px"></div>
+          <div><label for="fdKat">Kat</label><input id="fdKat" value="${esc(f.kat || "")}" style="width:70px"></div>
+          <div><label for="fdKapi">Kapı</label><input id="fdKapi" value="${esc(f.kapi)}" style="width:70px"></div>
+          <div style="flex:1;min-width:200px"><label for="fdNotes">Not</label><input id="fdNotes" value="${esc(f.notes)}"></div>
+          <button class="primary" id="fdSave">Kaydet</button>
+          <button id="fdDel" style="color:var(--bad)">Daireyi sil</button>
+        </div><div class="err" id="fdErr"></div></div>
+
+      <div class="card"><div class="card-h"><h2>Dairede oturanlar</h2><span class="hint">Mülk sahibi, kiracı ve hane üyeleri</span></div>
+        <div id="fdPeople">${f.people.length ? f.people.map(p => `<div class="ritem"><div class="ico-wrap ${p.kind === "malik" ? "green" : p.kind === "kiraci" ? "amber" : "blue"}">${ic(IC.chat)}</div>
+          <div class="grow"><b>${esc(p.name)}</b> <span class="chip plain">${KIND_TR[p.kind] || p.kind}</span>
+            <div class="meta">${esc([p.phone, p.email].filter(Boolean).join(" · ") || "iletişim yok")}${p.move_out ? ` · çıktı ${trDate(p.move_out)}` : ""}</div></div>
+          <button class="btn sm" data-pedit="${p.id}">Düzenle</button><button class="btn sm" data-pdel="${p.id}">Sil</button></div>`).join("") : '<div class="empty">Henüz kimse kayıtlı değil.</div>'}</div>
+        <form class="form" id="pForm" style="margin-top:12px">
+          <input type="hidden" id="pId">
+          <div><label for="pKind2">Durum</label><select id="pKind2">${Object.entries(KIND_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+          <div style="flex:1;min-width:180px"><label for="pName2">Ad soyad</label><input id="pName2" maxlength="80"></div>
+          <div><label for="pPhone2">Telefon</label><input id="pPhone2" maxlength="20" placeholder="05xx xxx xx xx"></div>
+          <div style="flex:1;min-width:160px"><label for="pEmail2">E-posta (isteğe bağlı)</label><input id="pEmail2" type="email" maxlength="120"></div>
+          <button class="primary" id="pSave2">Ekle</button>
+        </form><div class="err" id="pErr2"></div></div>
+
+      <div class="card"><div class="card-h"><h2>Araçlar</h2><span class="hint">Plaka sayısı sınırsız</span></div>
+        <div id="fdCars">${f.vehicles.length ? f.vehicles.map(v => `<div class="ritem"><div class="ico-wrap blue">${ic(IC.car)}</div><div class="grow"><b class="mono">${esc(v.plate)}</b><div class="meta">${esc([v.model, v.color, v.parking && "park " + v.parking].filter(Boolean).join(" · ") || "—")}</div></div><button class="btn sm" data-vdel="${v.id}">Sil</button></div>`).join("") : '<div class="empty">Araç yok.</div>'}</div>
+        <form class="form" id="vForm" style="margin-top:12px">
+          <div><label for="vPlate2">Plaka</label><input id="vPlate2" maxlength="12" placeholder="07 ABC 123"></div>
+          <div><label for="vModel2">Marka model</label><input id="vModel2" maxlength="60"></div>
+          <div><label for="vColor2">Renk</label><input id="vColor2" maxlength="30" style="width:100px"></div>
+          <div><label for="vPark2">Otopark</label><input id="vPark2" maxlength="20" style="width:100px"></div>
+          <button class="primary" id="vSave2">Ekle</button>
+        </form><div class="err" id="vErr2"></div></div>
+
+      <div class="card"><div class="card-h"><h2>Hesaplar (en fazla 2)</h2><a href="#/ayarlar">Yeni kullanıcı</a></div>
+        ${accounts.length ? accounts.map(u => `<div class="ritem"><div class="ico-wrap ${u.status === "active" ? "green" : "amber"}">${ic(IC.check)}</div>
+          <div class="grow"><b>${esc(u.name)}</b> <span class="hint">${esc(u.username)}</span>
+            <div class="meta">${u.status === "davetli" ? "Davet gönderildi, şifre bekleniyor" : u.status === "askida" ? "Askıda" : "Etkin"} · ${(u.devices || []).length}/2 cihaz${u.phone ? " · " + esc(u.phone) : ""}</div></div>
+          ${u.status === "davetli" ? `<button class="btn sm" data-inv="${esc(u.username)}">Davet linki</button>` : `<button class="btn sm" data-dev="${esc(u.username)}">Cihazları sıfırla</button>`}
+          <button class="btn sm" data-udel="${esc(u.username)}">Sil</button></div>`).join("") : '<div class="empty">Bu daireye bağlı hesap yok.</div>'}
+        ${accounts.length >= 2 ? '<div class="hint" style="margin-top:8px">2 hesap dolu. Yeni hesap için önce birini silin.</div>' : ""}</div>
+
+      <div class="card"><div class="card-h"><h2>İstekler</h2><a href="#/talepler">Tümü</a></div>
+        ${reqs.length ? `<div class="list">${reqs.slice(0, 6).map(q => `<div class="li" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><span>${esc(q.text)}</span><span class="t">${dmhm(q.ts)} ${q.status === "acik" ? '<span class="pill warn">Açık</span>' : '<span class="pill ok">Kapandı</span>'}</span></div></div>`).join("")}</div>` : '<div class="hint">Bu daireden istek yok.</div>'}</div>
+
+      <div class="card"><div class="card-h"><h2>Aidat</h2><a href="#/aidat?flat=${f.id}">Hesap dökümü</a></div>
+        <div class="facts"><div class="fact"><div class="l">Bakiye</div><div class="v ${st?.overdue ? "bad" : "ok"}">${TL(st?.balance || 0)}</div></div>
+          <div class="fact"><div class="l">Gecikmiş</div><div class="v ${st?.overdue ? "bad" : "ok"}">${TL(st?.overdue || 0)}</div></div>
+          <div class="fact"><div class="l">Toplam ödenen</div><div class="v">${TL(st?.paid || 0)}</div></div></div></div>`;
+
+    $("#fdSave").onclick = async () => {
+      try {
+        await post("/api/flats", { id: f.id, blok: $("#fdBlok").value, daire: $("#fdDaire").value, kat: $("#fdKat").value, kapi: $("#fdKapi").value, notes: $("#fdNotes").value });
+        await loadRegistry(); this.reload();
+      } catch (e) { $("#fdErr").textContent = e.message; }
+    };
+    $("#fdDel").onclick = async () => {
+      if (!confirm(`${flatName(f)} ve tüm kişi/araç kayıtları silinsin mi?`)) return;
+      try { await post("/api/flats/delete", { id: f.id }); location.hash = "#/sakinler"; } catch (e) { $("#fdErr").textContent = e.message; }
+    };
+    const fillPerson = (p) => {
+      $("#pId").value = p ? p.id : "";
+      $("#pName2").value = p ? p.name : "";
+      $("#pKind2").value = p ? p.kind : "malik";
+      $("#pPhone2").value = p ? p.phone || "" : "";
+      $("#pEmail2").value = p ? p.email || "" : "";
+      $("#pSave2").textContent = p ? "Güncelle" : "Ekle";
+    };
+    $("#pSave2").onclick = async (e) => {
+      e.preventDefault();
+      $("#pErr2").textContent = "";
+      const body = { id: +$("#pId").value || undefined, flat_id: f.id, name: $("#pName2").value.trim(), kind: $("#pKind2").value, phone: $("#pPhone2").value.trim(), email: $("#pEmail2").value.trim() };
+      if (!body.name) { $("#pErr2").textContent = "Ad soyad gerekli."; return; }
+      if (!body.phone) { $("#pErr2").textContent = "Telefon gerekli."; return; }
+      try { await post("/api/people", body); await loadRegistry(); this.reload(); } catch (err) { $("#pErr2").textContent = err.message; }
+    };
+    $$("[data-pedit]").forEach(b => b.onclick = () => fillPerson(f.people.find(p => p.id === +b.dataset.pedit)));
+    $$("[data-pdel]").forEach(b => b.onclick = async () => {
+      if (!confirm("Kişi silinsin mi?")) return;
+      try { await post("/api/people/delete", { id: +b.dataset.pdel }); await loadRegistry(); this.reload(); } catch (e) { $("#pErr2").textContent = e.message; }
+    });
+    $("#vSave2").onclick = async (e) => {
+      e.preventDefault();
+      $("#vErr2").textContent = "";
+      if (!$("#vPlate2").value.trim()) { $("#vErr2").textContent = "Plaka gerekli."; return; }
+      try {
+        await post("/api/vehicles", { flat_id: f.id, plate: $("#vPlate2").value, model: $("#vModel2").value, color: $("#vColor2").value, parking: $("#vPark2").value });
+        await loadRegistry(); this.reload();
+      } catch (err) { $("#vErr2").textContent = err.message; }
+    };
+    $$("[data-vdel]").forEach(b => b.onclick = async () => {
+      if (!confirm("Araç silinsin mi?")) return;
+      try { await post("/api/vehicles/delete", { id: +b.dataset.vdel }); await loadRegistry(); this.reload(); } catch (e) { $("#vErr2").textContent = e.message; }
+    });
+    $$("[data-dev]").forEach(b => b.onclick = async () => {
+      if (!confirm("Bu hesabın bağlı cihazları sıfırlansın mı? Kişi yeni cihazla giriş yapabilecek.")) return;
+      try { await post("/api/users/devices/reset", { username: b.dataset.dev }); await this.reload(); } catch (e) { $("#fdErr").textContent = e.message; }
+    });
+    $$("[data-inv]").forEach(b => b.onclick = async () => {
+      try {
+        const r = await post("/api/users/invite", { username: b.dataset.inv });
+        prompt("Davet bağlantısı (kişiye gönderin):", location.origin + r.url);
+      } catch (e) { $("#fdErr").textContent = e.message; }
+    });
+    $$("[data-udel]").forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.udel} hesabı silinsin mi?`)) return;
+      try { await post("/api/users/delete", { username: b.dataset.udel }); await this.reload(); } catch (e) { $("#fdErr").textContent = e.message; }
+    });
+  },
+};
+
+/* ------------------------------------------------------------------ registration requests */
+
+PAGES.kayittalepleri = {
+  async render(el) {
+    el.innerHTML = head("Kayıt istekleri", "Siteden gelen hesap başvuruları; onaylayınca davet bağlantısı oluşur") +
+      '<div id="rgBody"><div class="empty">Yükleniyor…</div></div>';
+    this.load();
+  },
+  async load() {
+    try { this.data = await api("/api/registrations"); this.draw(); }
+    catch (e) { $("#rgBody").innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; }
+  },
+  draw() {
+    const list = this.data.registrations;
+    const pending = list.filter(x => x.status === "bekliyor");
+    const done = list.filter(x => x.status !== "bekliyor");
+    const card = (x) => `<div class="card" style="border-left:3px solid ${x.status === "bekliyor" ? "var(--warn)" : x.status === "onaylandi" ? "var(--ok)" : "var(--bad)"}">
+      <div class="card-h"><h2>${esc(x.name)} <span class="hint">${esc(x.ref)}</span></h2>
+        <span class="chip ${x.status === "bekliyor" ? "amber" : x.status === "onaylandi" ? "green" : "red"}">${x.status === "bekliyor" ? "Bekliyor" : x.status === "onaylandi" ? "Onaylandı" : "Reddedildi"}</span></div>
+      <div class="hint">${esc(x.blok)} Blok · Kat ${esc(x.kat || "–")} · Daire ${esc(x.daire)} · ${x.kind === "kiraci" ? "Kiracı" : "Mülk sahibi"} · ${x.device_count} cihaz</div>
+      <div style="margin-top:6px">${esc(fmtPhone(x.phone))}${x.email ? " · " + esc(x.email) : ""}</div>
+      ${x.vehicles.length ? `<div class="hint" style="margin-top:4px">Araç: ${x.vehicles.map(v => esc(v.plate) + (v.model ? " " + esc(v.model) : "")).join(", ")}</div>` : ""}
+      <div class="hint" style="margin-top:4px">${dmhm(x.ts)} · ${esc(x.status === "bekliyor" ? "onay bekliyor" : x.decided_by + " · " + dmhm(x.decided_at || 0))}</div>
+      ${x.reject_reason ? `<div class="hint">Red nedeni: ${esc(x.reject_reason)}</div>` : ""}
+      ${x.status === "bekliyor" ? `<div style="margin-top:10px"><button class="primary" data-approve="${x.id}">Onayla</button> <button data-reject="${x.id}">Reddet</button></div>` : ""}
+      ${x.status === "onaylandi" ? `<div class="hint" style="margin-top:8px">Davet bağlantısı onay sırasında gösterildi. Yeniden göndermek için Kullanıcılar ve cihazlar → Davet.</div>` : ""}
+    </div>`;
+    $("#rgBody").innerHTML = `<div class="card"><h2>Bekleyen <span class="chip ${pending.length ? "amber" : "green"}">${pending.length}</span></h2>
+      ${pending.length ? pending.map(card).join("") : '<div class="empty">Bekleyen başvuru yok.</div>'}</div>
+      ${done.length ? `<div class="card"><h2>Sonuçlanan</h2>${done.slice(0, 20).map(card).join("")}</div>` : ""}`;
+    $$("[data-approve]").forEach(b => b.onclick = async () => {
+      const go = async (force) => {
+        const r = await post("/api/registrations/approve", { id: +b.dataset.approve, force });
+        const url = location.origin + r.invite_url;
+        prompt("Onaylandı. Davet bağlantısı (kişiye gönderin):", url);
+        this.load();
+      };
+      try { await go(false); }
+      catch (e) {
+        if (/2 hesap/.test(e.message) && confirm(e.message + " Yine de eklemek istiyor musunuz?")) { try { await go(true); } catch (e2) { alert(e2.message); } }
+        else alert(e.message);
+      }
+    });
+    $$("[data-reject]").forEach(b => b.onclick = async () => {
+      const reason = prompt("Red nedeni (isteğe bağlı):");
+      if (reason === null) return;
+      try { await post("/api/registrations/reject", { id: +b.dataset.reject, reason }); this.load(); } catch (e) { alert(e.message); }
+    });
+  },
+};
+
+/* ------------------------------------------------------------------ users and devices */
+
+PAGES.kullanicilar = {
+  async render(el) {
+    el.innerHTML = head("Kullanıcılar ve cihazlar", "Hesaplar, durumları ve bağlı cihazlar (en fazla 2)") +
+      '<div class="card"><div id="kuBody"><div class="empty">Yükleniyor…</div></div></div>';
+    await loadRegistry().catch(() => {});
+    this.load();
+  },
+  async load() {
+    try { this.users = (await api("/api/users")).users; this.draw(); }
+    catch (e) { $("#kuBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  },
+  draw() {
+    const flatNameOf = id => { const f = (S.reg || []).find(x => x.id === id); return f ? flatName(f) : id ? "Daire " + id : "–"; };
+    $("#kuBody").innerHTML = `<div class="tablewrap"><table><thead><tr><th>Ad soyad</th><th>Kullanıcı</th><th>Rol</th><th>Daire</th><th>Durum</th><th>Cihaz</th><th></th></tr></thead><tbody>
+      ${this.users.map(u => `<tr><td><b>${esc(u.name)}</b>${u.phone ? `<div class="hint">${esc(fmtPhone(u.phone))}</div>` : ""}</td><td class="mono">${esc(u.username)}</td>
+        <td>${ROLE_TR[u.role] || u.role}</td><td>${u.flat_id ? esc(flatNameOf(u.flat_id)) : "–"}</td>
+        <td><span class="chip ${u.status === "active" ? "green" : u.status === "davetli" ? "amber" : "red"}">${u.status === "active" ? "Etkin" : u.status === "davetli" ? "Davetli" : "Askıda"}</span></td>
+        <td class="hint">${(u.devices || []).length}/2${(u.devices || []).length ? " · " + esc(u.devices.map(d => d.label).join(", ")) : ""}</td>
+        <td style="text-align:right;white-space:nowrap">
+          ${u.role === "resident" ? `<button class="btn sm" data-inv="${esc(u.username)}">Davet</button> <button class="btn sm" data-dev="${esc(u.username)}">Cihaz sıfırla</button>` : ""}
+          ${u.status === "askida" ? `<button class="btn sm" data-act="${esc(u.username)}">Etkinleştir</button>` : (u.status === "active" ? `<button class="btn sm" data-sus="${esc(u.username)}">Askıya al</button>` : "")}
+          ${u.username !== S.me.user.username ? `<button class="btn sm" data-del="${esc(u.username)}">Sil</button>` : ""}
+        </td></tr>`).join("")}</tbody></table></div>
+      <div class="hint" style="margin-top:8px">Yeni hesap eklemek için Ayarlar → Kullanıcılar. Site sakini hesapları bir daireye bağlıdır; davet bağlantısıyla şifre belirler.</div>`;
+    $$("[data-inv]").forEach(b => b.onclick = async () => {
+      try { const r = await post("/api/users/invite", { username: b.dataset.inv }); prompt("Davet bağlantısı:", location.origin + r.url); }
+      catch (e) { alert(e.message); }
+    });
+    $$("[data-dev]").forEach(b => b.onclick = async () => {
+      if (!confirm("Cihazlar sıfırlansın mı?")) return;
+      try { await post("/api/users/devices/reset", { username: b.dataset.dev }); this.load(); } catch (e) { alert(e.message); }
+    });
+    $$("[data-sus]").forEach(b => b.onclick = async () => {
+      if (!confirm("Hesap askıya alınsın mı? Açık oturumlar kapanır.")) return;
+      try { await post("/api/users/status", { username: b.dataset.sus, status: "askida" }); this.load(); } catch (e) { alert(e.message); }
+    });
+    $$("[data-act]").forEach(b => b.onclick = async () => {
+      try { await post("/api/users/status", { username: b.dataset.act, status: "active" }); this.load(); } catch (e) { alert(e.message); }
+    });
+    $$("[data-del]").forEach(b => b.onclick = async () => {
+      if (!confirm(`${b.dataset.del} hesabı silinsin mi?`)) return;
+      try { await post("/api/users/delete", { username: b.dataset.del }); this.load(); } catch (e) { alert(e.message); }
+    });
+  },
+};
+
 /* ------------------------------------------------------------------ aidat (dues) */
 
 const TL = n => (+n || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " TL";
@@ -1773,7 +2039,7 @@ function waNum(ph) { let d = String(ph || "").replace(/\D/g, ""); if (d.startsWi
 PAGES.aidat = {
   render(el, params) {
     this.openFlat = +params?.get("flat") || null;
-    el.innerHTML = head("Aidat ve tahsilat", "Aylık aidat, ödemeler, gecikenler ve daire hesapları") + `
+    el.innerHTML = head("Aidat ve ödemeler", "Aylık aidat, ödemeler, gecikenler ve daire hesapları") + `
       <section class="metrics" id="duMetrics"></section>
       <div class="card" id="duLedger" style="display:none"></div>
       <div class="grid2">
@@ -2257,7 +2523,7 @@ PAGES.talepler = {
   status: "acik",
   cat: "",
   render(el) {
-    el.innerHTML = head("Talepler", "Site sakinlerinin istek ve arızaları") + `
+    el.innerHTML = head("İstekler", "Site sakinlerinin istek ve arızaları") + `
       <div class="card">
         <div class="form" style="margin-bottom:12px">
           <div><label for="tqSt">Durum</label><select id="tqSt"><option value="acik">Açık</option><option value="">Tümü</option><option value="kapali">Kapalı</option></select></div>
@@ -2343,7 +2609,7 @@ PAGES.dairem = {
       </div>
 
       <div class="card" id="houseCard"><div class="card-h"><h2>${esc(flatName(f))}</h2>${f.kapi ? `<span class="hint">Kapı ${esc(f.kapi)}</span>` : ""}</div>
-        <div class="facts"><div class="fact"><div class="l">Arsa payı</div><div class="v">${f.arsa_payi ?? "–"}</div></div><div class="fact"><div class="l">Kayıtlı kişi</div><div class="v">${f.people.filter(p => !p.move_out).length}</div></div><div class="fact"><div class="l">Kayıtlı araç</div><div class="v">${f.vehicles.length}</div></div></div>
+        <div class="facts"><div class="fact"><div class="l">Kat</div><div class="v">${f.kat || "–"}</div></div><div class="fact"><div class="l">Kayıtlı kişi</div><div class="v">${f.people.filter(p => !p.move_out).length}</div></div><div class="fact"><div class="l">Kayıtlı araç</div><div class="v">${f.vehicles.length}</div></div></div>
         <h3>Kişiler</h3>${f.people.length ? `<div class="list">${f.people.map(p => `<div class="li"><span>${esc(p.name)} <span class="pill unk">${KIND_TR[p.kind]}</span></span><span class="t">${esc([p.phone, p.email].filter(Boolean).join(" · "))}</span></div>`).join("")}</div>` : '<div class="hint">Kayıt yok.</div>'}
         <h3>Araçlar</h3>${f.vehicles.length ? `<div class="list">${f.vehicles.map(v => `<div class="li"><span class="mono">${esc(v.plate)}</span><span class="t">${esc([v.model, v.color, v.parking && "otopark " + v.parking].filter(Boolean).join(" · "))}</span></div>`).join("")}</div>` : '<div class="hint">Kayıtlı araç yok.</div>'}</div>
 
@@ -2588,7 +2854,7 @@ PAGES.isletme = {
     const box = $("#bpBody");
     if (!b) {
       box.innerHTML = `<div class="card"><div class="card-h"><h2>${this.year} için işletme projesi</h2></div>
-        <p style="color:var(--muted);margin:0 0 10px">Yıllık gelir-gider tahminini girin, daire başına avans arsa payına göre hesaplanır. Bildirimden sonra 7 gün içinde itiraz edilmezse kesinleşir (KMK 37).</p>
+        <p style="color:var(--muted);margin:0 0 10px">Yıllık gelir-gider tahminini girin, daire başına avans hesaplanır. Bildirimden sonra 7 gün içinde itiraz edilmezse kesinleşir (KMK 37).</p>
         <div class="form"><div style="flex:1;min-width:240px"><label for="bpNote">Not (isteğe bağlı)</label><input id="bpNote" maxlength="400" placeholder="2027 yılı tahmini"></div>
           <button class="primary" id="bpCreate">Projeyi oluştur</button></div>
         <div class="err" id="bpErr"></div></div>`;
@@ -2629,9 +2895,9 @@ PAGES.isletme = {
         </div>
         <div class="err" id="bpErr"></div>
       </div>
-      <div class="card"><div class="card-h"><h2>Daire başına avans</h2><span class="hint">Arsa payına göre</span></div>
-        <div class="tablewrap"><table><thead><tr><th>Daire</th><th style="text-align:right">Arsa payı</th><th style="text-align:right">Yıllık avans</th></tr></thead><tbody>
-          ${flats.map(f => `<tr><td>${esc(f.label)}</td><td style="text-align:right">${f.arsa || "–"}</td><td style="text-align:right">${TL(f.share)}</td></tr>`).join("")}
+      <div class="card"><div class="card-h"><h2>Daire başına avans</h2><span class="hint">Yıllık</span></div>
+        <div class="tablewrap"><table><thead><tr><th>Daire</th><th style="text-align:right">Yıllık avans</th></tr></thead><tbody>
+          ${flats.map(f => `<tr><td>${esc(f.label)}</td><td style="text-align:right">${TL(f.share)}</td></tr>`).join("")}
         </tbody></table></div></div>
       <div class="hint">Bu sayfa yöneticiye yardımcı bir araçtır; hukuki görüş değildir. Yönetim planı ve avukatınızın görüşü esastır.</div>`;
     $$("[data-bpl]").forEach(x => x.onclick = async () => {
@@ -3289,6 +3555,7 @@ function loginView() {
     <label for="lPw">${setup ? "Şifre (en az 8 karakter)" : "Şifre"}</label><input id="lPw" type="password" autocomplete="${setup ? "new-password" : "current-password"}">
     ${setup ? '<label for="lPw2">Şifre tekrar</label><input id="lPw2" type="password" autocomplete="new-password">' : ""}
     <button class="primary" id="lGo" style="width:100%;justify-content:center">${setup ? "Hesabı oluştur ve gir" : "Giriş yap"}</button>
+    ${setup ? "" : '<div style="text-align:center;margin-top:12px;font-size:13.5px"><a href="/kayit">Hesabınız yok mu? Kayıt isteği gönderin</a></div>'}
     <div class="err" id="lErr"></div>
     ${m.name ? `<div class="memorial">${esc(memLine())}${lifeSpan(m) ? `<div class="hint" style="margin-top:2px">${esc(lifeSpan(m))}</div>` : ""}</div>` : ""}</div></div>`;
   const go = async () => {

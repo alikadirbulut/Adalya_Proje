@@ -398,6 +398,41 @@ try:
 except Exception as e:
     check("TOTP self-test", False, str(e))
 
+# ---------------------------------------------------------------- registration, approval, invite, devices
+c, page = call("/kayit", "none")
+check("public registration page served", c == 200 and b"Kay" in page, c)
+reg = {"name": "Yeni Sakin", "phone": "0532 999 88 77", "email": "", "blok": "A", "kat": "4", "daire": "7",
+       "kind": "kiraci", "vehicles": [{"plate": "07 YEN 77", "model": "Fiat Egea"}], "device_count": 2, "consent": True}
+c, rr = call("/api/register", "none", reg)
+check("registration accepted with reference", c == 200 and rr.get("ref", "").startswith("K-"), rr)
+c, rl = call("/api/registrations")
+entry = next((x for x in rl["registrations"] if x["ref"] == rr["ref"]), None)
+check("registration listed with kind and car", entry and entry["status"] == "bekliyor" and entry["kind"] == "kiraci"
+      and entry["vehicles"][0]["plate"] == "07 YEN 77", entry)
+c, ap = call("/api/registrations/approve", "admin", {"id": entry["id"]})
+check("approval creates invite", c == 200 and ap["invite_url"].startswith("/davet?token="), ap)
+c, us = call("/api/users")
+first = next((u for u in us["users"] if u["username"] == ap["username"]), None)
+check("new account invited", first and first["status"] == "davetli", first)
+tok = ap["invite_url"].split("token=")[1]
+c, page2 = call("/davet?token=" + tok, "none")
+check("invite page served", c == 200 and b"ifre" in page2, c)
+check("invite sets password", call("/api/invite/accept", "none", {"token": tok, "password": "yeni12345"})[0] == 200)
+c, us = call("/api/users")
+check("account active after invite", any(u["username"] == ap["username"] and u["status"] == "active" for u in us["users"]))
+check("device reset", call("/api/users/devices/reset", "admin", {"username": ap["username"]})[0] == 200)
+
+# a flat can hold two accounts; a third needs explicit force
+for nm, ph in (("Ikinci Sakin", "0533 111 22 33"), ("Ucuncu Sakin", "0533 444 55 66")):
+    c, r2 = call("/api/register", "none", {k: v for k, v in {**reg, "name": nm, "phone": ph, "vehicles": []}.items()})
+    c, rl = call("/api/registrations")
+    e2 = next(x for x in rl["registrations"] if x["ref"] == r2["ref"])
+    if nm == "Ikinci Sakin":
+        check("second account on flat allowed", call("/api/registrations/approve", "admin", {"id": e2["id"]})[0] == 200)
+    else:
+        check("third account on flat refused", call("/api/registrations/approve", "admin", {"id": e2["id"]})[0] == 400)
+        check("third account with force allowed", call("/api/registrations/approve", "admin", {"id": e2["id"], "force": True})[0] == 200)
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}

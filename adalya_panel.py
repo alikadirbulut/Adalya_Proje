@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.7"
+VERSION = "2.8"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -51,7 +51,7 @@ MEDIA = os.path.join(HERE, "media")
 DEMO_USER = {"username": "demo", "name": "Demo", "role": "admin"}
 ROLES = {"admin": "Yönetici", "staff": "Güvenlik", "resident": "Site sakini"}
 REGISTRY_SQL = """
-CREATE TABLE IF NOT EXISTS flats (id INTEGER PRIMARY KEY, blok TEXT, kapi TEXT, daire TEXT, arsa_payi REAL, notes TEXT);
+CREATE TABLE IF NOT EXISTS flats (id INTEGER PRIMARY KEY, blok TEXT, kapi TEXT, daire TEXT, arsa_payi REAL, notes TEXT, kat TEXT);
 CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, flat_id INTEGER, name TEXT, phone TEXT, email TEXT, kind TEXT,
     move_in TEXT, move_out TEXT, emergency TEXT, notes TEXT);
 CREATE TABLE IF NOT EXISTS vehicles (id INTEGER PRIMARY KEY, flat_id INTEGER, plate TEXT, plate_key TEXT, model TEXT,
@@ -90,6 +90,11 @@ CREATE TABLE IF NOT EXISTS cash (id INTEGER PRIMARY KEY, date TEXT, kind TEXT, c
     amount REAL, note TEXT, user TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, ts REAL, flat_id INTEGER, channel TEXT, subject TEXT,
     message TEXT, status TEXT DEFAULT 'bekliyor', sent_ts REAL, sent_by TEXT, user TEXT);
+CREATE TABLE IF NOT EXISTS registrations (id INTEGER PRIMARY KEY, ts REAL, ref TEXT, name TEXT, phone TEXT, email TEXT,
+    blok TEXT, kat TEXT, daire TEXT, kind TEXT, vehicles TEXT, device_count INTEGER, note TEXT, status TEXT DEFAULT 'bekliyor',
+    flat_id INTEGER, decided_by TEXT, decided_at REAL, reject_reason TEXT, ip TEXT);
+CREATE TABLE IF NOT EXISTS devices (id INTEGER PRIMARY KEY, username TEXT, token_hash TEXT UNIQUE, label TEXT,
+    ua TEXT, ip TEXT, first_ts REAL, last_ts REAL);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -160,6 +165,53 @@ def totp_verify(secret, code):
     return any(hmac.compare_digest(totp_code(secret, now + w), code) for w in (-30, 0, 30))
 
 
+# ---------------------------------------------------------------- devices (max 2 per account)
+# Store apps will send a per-install id in X-Device-Id; the web panel uses a long-lived cookie.
+# MAC addresses are deliberately not used: they are invisible to browsers and spoofable.
+
+def device_token(h):
+    m = re.search(r"adalya_device=([A-Za-z0-9_-]+)", h.headers.get("Cookie", ""))
+    return (h.headers.get("X-Device-Id") or (m.group(1) if m else "")).strip()[:200]
+
+
+def device_cookie(h, tok):
+    return f"adalya_device={tok}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax{h.cookie_secure()}"
+
+
+def bind_device(h, username):
+    """Return (token, created) or raise ValueError('DEVICE_LIMIT')."""
+    tok = device_token(h)
+    created = False
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        created = True
+    th = hashlib.sha256(tok.encode("utf-8")).hexdigest()
+    now = time.time()
+    conn = db()
+    row = conn.execute("SELECT id FROM devices WHERE token_hash=?", (th,)).fetchone()
+    if row:
+        conn.execute("UPDATE devices SET last_ts=?, ip=? WHERE id=?", (now, h.client_address[0], row[0]))
+        conn.commit()
+        conn.close()
+        return tok, created
+    n = conn.execute("SELECT COUNT(*) FROM devices WHERE username=?", (username,)).fetchone()[0]
+    if n >= 2:
+        conn.close()
+        raise ValueError("DEVICE_LIMIT")
+    conn.execute("INSERT INTO devices (username, token_hash, label, ua, ip, first_ts, last_ts) VALUES (?,?,?,?,?,?,?)",
+                 (username, th, f"Cihaz {n + 1}", h.headers.get("User-Agent", "")[:200], h.client_address[0], now, now))
+    conn.commit()
+    conn.close()
+    return tok, created
+
+
+def user_devices(username):
+    conn = db()
+    rows = conn.execute("SELECT label, ip, last_ts, ua FROM devices WHERE username=? ORDER BY first_ts", (username,)).fetchall()
+    conn.close()
+    return [{"label": r[0] or "", "ip": r[1] or "", "last_ts": r[2] or 0, "ua": r[3] or ""} for r in rows]
+
+
 started = time.time()
 args = None
 
@@ -182,6 +234,9 @@ def migrate(conn):
     for col in ("category", "photo"):
         if col not in cols:
             conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
+    fcols = {r[1] for r in conn.execute("PRAGMA table_info(flats)")}
+    if "kat" not in fcols:
+        conn.execute("ALTER TABLE flats ADD COLUMN kat TEXT")
 
 
 def load_cfg():
@@ -515,6 +570,8 @@ def r_index(h, qs, user):
 def r_me(h, qs, user):
     if user and user["role"] == "resident":
         user = {**user, "cams": len(allowed_channels(user.get("flat_id"))), "unread": unread_announcements(user["username"])}
+    if user and user["role"] == "admin":
+        user = {**user, "pending_regs": pending_registrations()}
     h.json(200, {"setup_needed": not args.demo and not admins(), "user": user, "demo": args.demo,
                  "site": site_payload(bool(user)), "version": VERSION, "lan": args.lan})
 
@@ -573,6 +630,10 @@ def r_login(h, qs, user):
         login_bad(ip, username)
         return h.json(401, {"error": "Kullanıcı adı veya şifre hatalı"})
     login_ok(ip, username)
+    if rec.get("status") == "askida":
+        return h.json(403, {"error": "Hesabınız askıya alınmış. Site yönetimine başvurun."})
+    if rec.get("status") == "davetli":
+        return h.json(401, {"error": "Hesabınız henüz etkin değil. Davet bağlantınızla şifre belirleyin."})
     if rec.get("totp_on") and rec.get("totp_secret"):
         if len(pending_logins) > 500:
             for k in [k for k, v in pending_logins.items() if v["exp"] < now]:
@@ -581,7 +642,16 @@ def r_login(h, qs, user):
         pending_logins[pend] = {"username": username, "exp": now + 300}
         return h.json(200, {"twofa": True, "pending": pend})
     u = {"username": username, "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id")}
-    h.start_session(u)
+    cookies = None
+    if not args.demo and rec.get("role") != "admin":
+        try:
+            tok, created = bind_device(h, username)
+            if created:
+                cookies = [device_cookie(h, tok)]
+        except ValueError:
+            return h.json(409, {"error": "Bu hesap en fazla 2 cihaza bağlanabilir. Yönetimden bir cihazı kaldırmasını isteyin.",
+                                "device_limit": True})
+    h.start_session(u, cookies)
     audit(u, "Giriş", "")
 
 
@@ -599,7 +669,15 @@ def r_login_2fa(h, qs, user):
         return h.json(401, {"error": "Kod hatalı"})
     pending_logins.pop(pend, None)
     u = {"username": username, "name": rec["name"], "role": rec["role"], "flat_id": rec.get("flat_id")}
-    h.start_session(u)
+    cookies = None
+    if not args.demo and rec.get("role") != "admin":
+        try:
+            tok, created = bind_device(h, username)
+            if created:
+                cookies = [device_cookie(h, tok)]
+        except ValueError:
+            return h.json(409, {"error": "Bu hesap en fazla 2 cihaza bağlanabilir.", "device_limit": True})
+    h.start_session(u, cookies)
     audit(u, "Giriş", "iki adımlı doğrulama")
 
 
@@ -648,8 +726,63 @@ def r_2fa_disable(h, qs, user):
 
 @route("GET", "/api/users", need="admin")
 def r_users(h, qs, user):
-    h.json(200, {"users": [{"username": k, "name": v["name"], "role": v["role"], "flat_id": v.get("flat_id")}
+    h.json(200, {"users": [{"username": k, "name": v["name"], "role": v["role"], "flat_id": v.get("flat_id"),
+                            "status": v.get("status", "active"), "phone": v.get("phone", ""),
+                            "invite": bool(v.get("invite")), "devices": user_devices(k)}
                            for k, v in sorted(cfg["users"].items(), key=lambda kv: (kv[1]["role"] != "admin", kv[1]["name"]))]})
+
+
+@route("POST", "/api/users/status", need="admin")
+def r_user_status(h, qs, user):
+    b = h.body()
+    username = str(b.get("username") or "").strip().lower()
+    rec = cfg["users"].get(username)
+    if not rec:
+        raise ValueError("Kullanıcı bulunamadı")
+    status = b.get("status")
+    if status not in ("active", "askida", "davetli"):
+        raise ValueError("Durum geçersiz")
+    if username == user["username"] and status != "active":
+        raise ValueError("Kendi hesabınızı askıya alamazsınız")
+    rec["status"] = status
+    if status != "davetli":
+        rec.pop("invite", None)
+    save_cfg()
+    if status != "active":
+        for tok in [t for t, s in sessions.items() if s["username"] == username]:
+            sessions.pop(tok, None)
+    audit(user, "Kullanıcı durumu", f"{username}: {status}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/users/devices/reset", need="admin")
+def r_user_devices_reset(h, qs, user):
+    username = str(h.body().get("username") or "").strip().lower()
+    if username not in cfg["users"]:
+        raise ValueError("Kullanıcı bulunamadı")
+    conn = db()
+    conn.execute("DELETE FROM devices WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+    audit(user, "Cihaz sıfırlama", username)
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/users/invite", need="admin")
+def r_user_invite(h, qs, user):
+    username = str(h.body().get("username") or "").strip().lower()
+    rec = cfg["users"].get(username)
+    if not rec:
+        raise ValueError("Kullanıcı bulunamadı")
+    if rec.get("role") != "resident":
+        raise ValueError("Davet yalnızca site sakinleri için")
+    rec["status"] = "davetli"
+    rec["invite"] = secrets.token_urlsafe(24)
+    rec["invite_exp"] = time.time() + 14 * 86400
+    rec.pop("pw", None)
+    save_cfg()
+    audit(user, "Davet", username)
+    h.json(200, {"ok": True, "url": f"/davet?token={rec['invite']}"})
 
 
 @route("POST", "/api/users", need="admin")
@@ -663,6 +796,9 @@ def r_user_save(h, qs, user):
         return h.json(400, {"error": "Son yöneticinin yetkisi kaldırılamaz"})
     rec = cfg["users"].get(username, {})
     rec.update(name=name, role=role)
+    rec.setdefault("status", "active")
+    if b.get("phone"):
+        rec["phone"] = txt(b, "phone", 20)
     if flat_id:
         rec["flat_id"] = flat_id
     else:
@@ -688,6 +824,10 @@ def r_user_delete(h, qs, user):
         return h.json(400, {"error": "Son yönetici silinemez"})
     cfg["users"].pop(username)
     save_cfg()
+    conn = db()
+    conn.execute("DELETE FROM devices WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
     for tok in [t for t, s in sessions.items() if s["username"] == username]:
         sessions.pop(tok, None)
     audit(user, "Kullanıcı silindi", username)
@@ -1862,6 +2002,13 @@ def unread_announcements(username):
     return n
 
 
+def pending_registrations():
+    conn = db()
+    n = conn.execute("SELECT COUNT(*) FROM registrations WHERE status='bekliyor'").fetchone()[0]
+    conn.close()
+    return n
+
+
 def pass_state(p, now_str):
     if p.get("used_ts"):
         return "used"
@@ -2152,10 +2299,10 @@ def flat_label(f):
 
 
 def registry(conn, flat_id=None, full=True):
-    q = "SELECT id, blok, kapi, daire, arsa_payi, notes FROM flats"
+    q = "SELECT id, blok, kapi, daire, arsa_payi, notes, kat FROM flats"
     rows = conn.execute(q + (" WHERE id=?" if flat_id else ""), (flat_id,) if flat_id else ()).fetchall()
     flats = {r[0]: {"id": r[0], "blok": r[1], "kapi": r[2], "daire": r[3], "arsa_payi": r[4], "notes": r[5] or "",
-                    "people": [], "vehicles": []} for r in rows}
+                    "kat": r[6] or "", "people": [], "vehicles": []} for r in rows}
     for r in conn.execute("SELECT id, flat_id, name, phone, email, kind, move_in, move_out, emergency, notes FROM people ORDER BY CASE kind WHEN 'malik' THEN 0 WHEN 'kiraci' THEN 1 ELSE 2 END, name"):
         if r[1] in flats:
             flats[r[1]]["people"].append({"id": r[0], "flat_id": r[1], "name": r[2], "phone": r[3], "email": r[4], "kind": r[5],
@@ -2200,11 +2347,11 @@ def r_flat_save(h, qs, user):
     if dup and dup[0] != fid:
         conn.close()
         raise ValueError(f"{blok} Blok · Daire {daire} zaten kayıtlı")
-    vals = (blok, txt(b, "kapi", 10), daire, ap, txt(b, "notes", 500))
+    vals = (blok, txt(b, "kapi", 10), daire, ap, txt(b, "notes", 500), txt(b, "kat", 10))
     if fid:
-        conn.execute("UPDATE flats SET blok=?, kapi=?, daire=?, arsa_payi=?, notes=? WHERE id=?", (*vals, fid))
+        conn.execute("UPDATE flats SET blok=?, kapi=?, daire=?, arsa_payi=?, notes=?, kat=? WHERE id=?", (*vals, fid))
     else:
-        fid = conn.execute("INSERT INTO flats (blok, kapi, daire, arsa_payi, notes) VALUES (?,?,?,?,?)", vals).lastrowid
+        fid = conn.execute("INSERT INTO flats (blok, kapi, daire, arsa_payi, notes, kat) VALUES (?,?,?,?,?,?)", vals).lastrowid
     conn.commit()
     conn.close()
     audit(user, "Daire kaydı", f"{blok} Blok · Daire {daire}")
@@ -2649,13 +2796,13 @@ def r_request_photo(h, qs, user):
 def r_requests(h, qs, user):
     conn = db()
     rows = conn.execute("SELECT r.id, r.ts, r.user, r.text, r.status, r.reply, r.closed_by, r.closed_at, f.blok, f.daire, "
-                        "r.category, r.photo FROM requests r LEFT JOIN flats f ON f.id=r.flat_id "
+                        "r.category, r.photo, r.flat_id FROM requests r LEFT JOIN flats f ON f.id=r.flat_id "
                         "ORDER BY r.status='kapali', r.ts DESC LIMIT 300").fetchall()
     conn.close()
     h.json(200, {"requests": [{"id": r[0], "ts": r[1], "user": r[2], "text": r[3], "status": r[4], "reply": r[5],
                                "closed_by": r[6], "closed_at": r[7],
                                "flat": flat_label({"blok": r[8], "daire": r[9]}) if r[9] else "",
-                               "category": r[10] or "diger", "has_photo": bool(r[11])} for r in rows],
+                               "category": r[10] or "diger", "has_photo": bool(r[11]), "flat_id": r[12]} for r in rows],
                  "categories": REQ_CATEGORIES})
 
 
@@ -3186,6 +3333,332 @@ def reminder_worker():
         except Exception:
             pass
         time.sleep(1800)
+
+
+# ---------------------------------------------------------------- public registration and invitations
+REG_HITS = {}
+REG_KINDS = {"malik": "Mülk sahibi", "kiraci": "Kiracı"}
+PUBLIC_CSS = """
+:root{--bg:#f7f6f3;--card:#fff;--line:#e8e5dd;--text:#1b1e23;--muted:#6b7280;--accent:#1d5f8a;--accent-bg:#e9f2f9;--bad:#b3261e;--ok:#2f7d4f}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 "Segoe UI",system-ui,sans-serif}
+.wrap{max-width:560px;margin:0 auto;padding:24px 18px 48px}
+h1{font-size:24px;margin:0 0 2px}h2{font-size:15px;margin:0 0 10px}
+.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px}
+label:first-of-type{margin-top:0}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:var(--card);color:var(--text)}
+.row{display:flex;gap:10px}.row>div{flex:1;min-width:0}
+.hint{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.check{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--text);margin-top:8px}
+.check input{width:auto;margin-top:3px}
+button{margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;background:var(--text);color:var(--card);font:inherit;font-weight:600;cursor:pointer}
+.err{color:var(--bad);font-size:13px;margin-top:8px;min-height:1em}
+.ok{color:var(--ok);font-size:15px;font-weight:600}
+.big{font-family:Consolas,monospace;font-size:20px;letter-spacing:.06em;display:inline-block;padding:6px 10px;border:2px solid var(--text);border-radius:8px;margin:8px 0}
+"""
+
+
+def public_page(title, body):
+    return ("<!doctype html><html lang=\"tr\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            f"<title>{title}</title><style>{PUBLIC_CSS}</style></head><body><main class=\"wrap\">{body}</main></body></html>")
+
+
+def norm_phone(s):
+    d = re.sub(r"\D", "", str(s or ""))
+    if d.startswith("90") and len(d) == 12:
+        d = d[2:]
+    if d.startswith("0") and len(d) == 11:
+        d = d[1:]
+    return d
+
+
+def reg_rate_ok(ip):
+    now = time.time()
+    hits = [t for t in REG_HITS.get(ip, []) if t > now - 3600]
+    if len(hits) >= 5:
+        REG_HITS[ip] = hits
+        return False
+    hits.append(now)
+    REG_HITS[ip] = hits
+    return True
+
+
+def unique_username(name):
+    base = re.sub(r"[^a-z0-9]+", ".", fold_words(name)).strip(".")[:24] or "sakin"
+    if base in cfg["users"]:
+        i = 2
+        while f"{base}{i}" in cfg["users"]:
+            i += 1
+        base = f"{base}{i}"
+    return base
+
+
+@route("GET", "/kayit", need="none")
+def r_kayit_page(h, qs, user):
+    import html as html_lib
+    nm = html_lib.escape(site["site_name"])
+    body = """
+<h1>__SITE__</h1><p class="sub">Site sakini kaydı · yönetim onayından sonra etkinleşir</p>
+<form id="reg">
+  <section class="card"><h2>Kimsiniz?</h2>
+    <label for="rgName">Ad soyad</label><input id="rgName" maxlength="80" autocomplete="name">
+    <label for="rgPhone">Cep telefonu</label><input id="rgPhone" inputmode="tel" maxlength="20" placeholder="05xx xxx xx xx" autocomplete="tel">
+    <label for="rgEmail">E-posta <span style="color:var(--muted)">(isteğe bağlı)</span></label><input id="rgEmail" type="email" maxlength="120" autocomplete="email">
+    <div class="row"><div><label for="rgBlok">Blok</label><select id="rgBlok"><option>A</option><option>B</option><option>C</option></select></div>
+      <div><label for="rgKat">Kat</label><input id="rgKat" maxlength="10" placeholder="3"></div>
+      <div><label for="rgDaire">Daire</label><input id="rgDaire" maxlength="10" inputmode="numeric" placeholder="5"></div></div>
+    <label for="rgKind">Durum</label><select id="rgKind"><option value="malik">Mülk sahibi</option><option value="kiraci">Kiracı</option></select>
+  </section>
+  <section class="card"><h2>Araç</h2>
+    <label class="check"><input type="checkbox" id="rgCar"> Aracım var (en fazla 2)</label>
+    <div id="carBox" hidden>
+      <div class="row"><div><label for="rgP1">Plaka</label><input id="rgP1" maxlength="12" placeholder="07 ABC 123"></div>
+        <div><label for="rgM1">Marka model</label><input id="rgM1" maxlength="60"></div></div>
+      <div class="row"><div><label for="rgP2">2. plaka (varsa)</label><input id="rgP2" maxlength="12"></div>
+        <div><label for="rgM2">Marka model</label><input id="rgM2" maxlength="60"></div></div>
+    </div>
+  </section>
+  <section class="card"><h2>Cihaz</h2>
+    <label for="rgDev">Bu hesabı kaç cihazda kullanacaksınız?</label>
+    <select id="rgDev"><option value="1">1 cihaz</option><option value="2">2 cihaz (telefon + tablet gibi)</option></select>
+    <p class="hint">En fazla 2 cihaz bağlanabilir. Telefon değişirse yönetim eski cihazı kaldırır.</p>
+  </section>
+  <section class="card"><h2>Onay</h2>
+    <label class="check"><input type="checkbox" id="rgConsent"> Ad, telefon, daire ve araç bilgilerimin site yönetimi tarafından üyelik ve güvenlik amacıyla işlenmesini kabul ediyorum (KVKK).</label>
+    <input type="text" id="rgHp" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+    <button type="submit">Kayıt isteği gönder</button>
+    <div class="err" id="rgErr"></div>
+  </section>
+</form>
+<div class="card" id="done" hidden>
+  <div class="ok">Kayıt isteğiniz alındı.</div>
+  <p>Başvuru numaranız:</p><div class="big" id="ref"></div>
+  <p class="hint">Yönetim onayladıktan sonra size gönderilen davet bağlantısıyla şifrenizi belirleyebilirsiniz.</p>
+  <a href="/" style="display:inline-block;margin-top:8px">Panele dön</a>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+$("#rgCar").onchange = () => { $("#carBox").hidden = !$("#rgCar").checked; };
+$("#reg").onsubmit = async (e) => {
+  e.preventDefault();
+  $("#rgErr").textContent = "";
+  const vehicles = [];
+  if ($("#rgCar").checked) {
+    if ($("#rgP1").value.trim()) vehicles.push({plate:$("#rgP1").value, model:$("#rgM1").value});
+    if ($("#rgP2").value.trim()) vehicles.push({plate:$("#rgP2").value, model:$("#rgM2").value});
+  }
+  const body = {
+    name: $("#rgName").value.trim(), phone: $("#rgPhone").value.trim(), email: $("#rgEmail").value.trim(),
+    blok: $("#rgBlok").value, kat: $("#rgKat").value.trim(), daire: $("#rgDaire").value.trim(),
+    kind: $("#rgKind").value, vehicles, device_count: +$("#rgDev").value,
+    consent: $("#rgConsent").checked, website: $("#rgHp").value
+  };
+  try {
+    const r = await fetch("/api/register", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Kayıt alınamadı");
+    $("#reg").hidden = true; $("#done").hidden = false; $("#ref").textContent = d.ref;
+  } catch (err) { $("#rgErr").textContent = err.message; }
+};
+</script>"""
+    body = body.replace("__SITE__", nm)
+    h.raw(200, public_page(f"Kayıt · {site['site_name']}", body).encode("utf-8"), "text/html; charset=utf-8")
+
+
+@route("POST", "/api/register", need="none")
+def r_register(h, qs, user):
+    ip = h.client_address[0]
+    if not reg_rate_ok(ip):
+        return h.json(429, {"error": "Çok fazla kayıt denemesi. Bir süre sonra tekrar deneyin."})
+    b = h.body(max_bytes=200_000)
+    if str(b.get("website") or "").strip():
+        return h.json(400, {"error": "Kayıt alınamadı"})
+    name = txt(b, "name", 80)
+    phone = norm_phone(b.get("phone"))
+    email = txt(b, "email", 120)
+    blok, kat, daire = txt(b, "blok", 5).upper(), txt(b, "kat", 10), txt(b, "daire", 10)
+    kind = b.get("kind") if b.get("kind") in REG_KINDS else "malik"
+    if len(name) < 3:
+        raise ValueError("Ad soyad girin")
+    if len(phone) != 10 or not phone.startswith("5"):
+        raise ValueError("Geçerli bir cep telefonu girin (05xx xxx xx xx)")
+    if email and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise ValueError("E-posta geçersiz")
+    if not blok or not daire:
+        raise ValueError("Blok ve daire gerekli")
+    if not b.get("consent"):
+        raise ValueError("KVKK onayı gerekli")
+    vehicles = []
+    for v in (b.get("vehicles") or [])[:2]:
+        plate = re.sub(r"\s+", " ", str(v.get("plate") or "")).strip().upper()[:12]
+        if plate:
+            vehicles.append({"plate": plate, "model": txt(v, "model", 60)})
+    try:
+        dev = max(1, min(2, int(b.get("device_count") or 1)))
+    except (TypeError, ValueError):
+        dev = 1
+    conn = db()
+    rid = conn.execute("INSERT INTO registrations (ts, ref, name, phone, email, blok, kat, daire, kind, vehicles, "
+                       "device_count, note, status, ip) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'bekliyor',?)",
+                       (time.time(), "", name, phone, email, blok, kat, daire, kind,
+                        json.dumps(vehicles, ensure_ascii=False), dev, txt(b, "note", 300), ip)).lastrowid
+    ref = f"K-{datetime.now().year}-{rid:04d}"
+    conn.execute("UPDATE registrations SET ref=? WHERE id=?", (ref, rid))
+    conn.commit()
+    conn.close()
+    audit({"name": "Kayıt formu", "role": "system"}, "Kayıt isteği", f"{ref} · {name}")
+    h.json(200, {"ok": True, "ref": ref})
+
+
+@route("GET", "/api/registrations", need="admin")
+def r_registrations(h, qs, user):
+    conn = db()
+    rows = conn.execute("SELECT id, ts, ref, name, phone, email, blok, kat, daire, kind, vehicles, device_count, note, "
+                        "status, flat_id, decided_by, decided_at, reject_reason FROM registrations "
+                        "ORDER BY (status!='bekliyor'), ts DESC LIMIT 300").fetchall()
+    conn.close()
+    out = []
+    for r in rows:
+        try:
+            vehicles = json.loads(r[10] or "[]")
+        except ValueError:
+            vehicles = []
+        out.append({"id": r[0], "ts": r[1], "ref": r[2], "name": r[3], "phone": r[4], "email": r[5] or "",
+                    "blok": r[6], "kat": r[7] or "", "daire": r[8], "kind": r[9], "vehicles": vehicles,
+                    "device_count": r[11] or 1, "note": r[12] or "", "status": r[13], "flat_id": r[14],
+                    "decided_by": r[15] or "", "decided_at": r[16], "reject_reason": r[17] or ""})
+    h.json(200, {"registrations": out, "kinds": REG_KINDS,
+                 "pending": sum(1 for x in out if x["status"] == "bekliyor")})
+
+
+@route("POST", "/api/registrations/approve", need="admin")
+def r_reg_approve(h, qs, user):
+    b = h.body()
+    rid, force = b.get("id"), bool(b.get("force"))
+    conn = db()
+    r = conn.execute("SELECT id, name, phone, email, blok, kat, daire, kind, vehicles, status FROM registrations WHERE id=?",
+                     (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Kayıt bulunamadı")
+    if r[9] != "bekliyor":
+        conn.close()
+        raise ValueError("Bu kayıt zaten sonuçlandırılmış")
+    name, phone, email, blok, kat, daire, kind = r[1], r[2], r[3], r[4], r[5], r[6], r[7]
+    try:
+        vehicles = json.loads(r[8] or "[]")
+    except ValueError:
+        vehicles = []
+    flat = conn.execute("SELECT id FROM flats WHERE blok=? AND daire=?", (blok, daire)).fetchone()
+    if flat:
+        fid = flat[0]
+        if kat:
+            conn.execute("UPDATE flats SET kat=COALESCE(NULLIF(kat,''),?) WHERE id=?", (kat, fid))
+    else:
+        fid = conn.execute("INSERT INTO flats (blok, kapi, daire, arsa_payi, notes, kat) VALUES (?,?,?,NULL,'',?)",
+                           (blok, "", daire, kat)).lastrowid
+    accounts = [u for u, rec in cfg["users"].items() if rec.get("role") == "resident" and rec.get("flat_id") == fid]
+    if len(accounts) >= 2 and not force:
+        conn.close()
+        raise ValueError("Bu dairede 2 hesap var. Yine de eklemek için onaylayın.")
+    if not conn.execute("SELECT 1 FROM people WHERE flat_id=? AND name=?", (fid, name)).fetchone():
+        conn.execute("INSERT INTO people (flat_id, name, phone, email, kind, move_in, move_out, emergency, notes) "
+                     "VALUES (?,?,?,?,?,?,'','','')", (fid, name, phone, email, kind, datetime.now().strftime("%Y-%m-%d")))
+    for v in vehicles[:2]:
+        pk = plate_key(v.get("plate") or "")
+        if len(pk) < 4 or conn.execute("SELECT 1 FROM vehicles WHERE plate_key=?", (pk,)).fetchone():
+            continue
+        conn.execute("INSERT INTO vehicles (flat_id, plate, plate_key, model, color, parking, sticker) "
+                     "VALUES (?,?,?,?,'','','')", (fid, v["plate"], pk, (v.get("model") or "")[:60]))
+    conn.commit()
+    conn.close()
+    username = unique_username(name)
+    tok = secrets.token_urlsafe(24)
+    cfg["users"][username] = {"name": name, "role": "resident", "flat_id": fid, "status": "davetli", "phone": phone,
+                              "invite": tok, "invite_exp": time.time() + 14 * 86400, "created_by": user["name"]}
+    save_cfg()
+    conn = db()
+    conn.execute("UPDATE registrations SET status='onaylandi', flat_id=?, decided_by=?, decided_at=? WHERE id=?",
+                 (fid, user["name"], time.time(), rid))
+    conn.commit()
+    conn.close()
+    audit(user, "Kayıt onayı", f"{name} · {flat_label({'blok': blok, 'daire': daire})}")
+    h.json(200, {"ok": True, "username": username, "invite_url": f"/davet?token={tok}", "phone": phone,
+                 "flat": flat_label({"blok": blok, "daire": daire})})
+
+
+@route("POST", "/api/registrations/reject", need="admin")
+def r_reg_reject(h, qs, user):
+    b = h.body()
+    rid = b.get("id")
+    reason = txt(b, "reason", 300)
+    conn = db()
+    r = conn.execute("SELECT name, status FROM registrations WHERE id=?", (rid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Kayıt bulunamadı")
+    if r[1] != "bekliyor":
+        conn.close()
+        raise ValueError("Bu kayıt zaten sonuçlandırılmış")
+    conn.execute("UPDATE registrations SET status='reddedildi', decided_by=?, decided_at=?, reject_reason=? WHERE id=?",
+                 (user["name"], time.time(), reason, rid))
+    conn.commit()
+    conn.close()
+    audit(user, "Kayıt reddi", f"{r[0]}{' · ' + reason if reason else ''}")
+    h.json(200, {"ok": True})
+
+
+@route("GET", "/davet", need="none")
+def r_davet_page(h, qs, user):
+    tok = str(qs.get("token") or "")
+    body = f"""
+<h1>Davet</h1><p class="sub">Şifrenizi belirleyerek hesabınızı etkinleştirin</p>
+<div class="card">
+  <label for="dvPw">Yeni şifre (en az 8 karakter)</label><input id="dvPw" type="password" autocomplete="new-password">
+  <label for="dvPw2">Şifre tekrar</label><input id="dvPw2" type="password" autocomplete="new-password">
+  <button id="dvGo">Etkinleştir</button>
+  <div class="err" id="dvErr"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+$("#dvGo").onclick = async () => {{
+  $("#dvErr").textContent = "";
+  if ($("#dvPw").value.length < 8) {{ $("#dvErr").textContent = "Şifre en az 8 karakter olmalı."; return; }}
+  if ($("#dvPw").value !== $("#dvPw2").value) {{ $("#dvErr").textContent = "Şifreler aynı değil."; return; }}
+  try {{
+    const r = await fetch("/api/invite/accept", {{method:"POST", headers:{{"Content-Type":"application/json"}},
+      body: JSON.stringify({{token: {json.dumps(tok)}, password: $("#dvPw").value}})}});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Etkinleştirilemedi");
+    location.href = "/";
+  }} catch (e) {{ $("#dvErr").textContent = e.message; }}
+}};
+</script>"""
+    h.raw(200, public_page(f"Davet · {site['site_name']}", body).encode("utf-8"), "text/html; charset=utf-8")
+
+
+@route("POST", "/api/invite/accept", need="none")
+def r_invite_accept(h, qs, user):
+    b = h.body()
+    tok, pw = str(b.get("token") or ""), str(b.get("password") or "")
+    uname = next((u for u, r in cfg["users"].items() if r.get("invite") == tok), None)
+    if not uname:
+        raise ValueError("Davet geçersiz veya kullanılmış")
+    rec = cfg["users"][uname]
+    if rec.get("invite_exp", 0) < time.time():
+        raise ValueError("Davet süresi dolmuş; yönetimden yeni davet isteyin")
+    if len(pw) < 8:
+        raise ValueError("Şifre en az 8 karakter olmalı")
+    rec["pw"] = hash_pw(pw)
+    rec["status"] = "active"
+    rec.pop("invite", None)
+    rec.pop("invite_exp", None)
+    save_cfg()
+    audit({"name": rec["name"], "role": "resident"}, "Davet kabul", uname)
+    u = {"username": uname, "name": rec["name"], "role": "resident", "flat_id": rec.get("flat_id")}
+    h.start_session(u)
 
 
 # ---------------------------------------------------------------- settings stored in the database (data/, never committed)
@@ -3847,11 +4320,12 @@ class Handler(BaseHTTPRequestHandler):
     def cookie_secure(self):
         return "; Secure" if self.headers.get("X-Forwarded-Proto", "").lower() == "https" else ""
 
-    def start_session(self, u):
+    def start_session(self, u, extra_cookies=None):
         tok = secrets.token_urlsafe(32)
         sessions[tok] = {**u, "exp": time.time() + 12 * 3600}
-        self.json(200, {"ok": True, "user": u},
-                  {"Set-Cookie": f"adalya_session={tok}; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict{self.cookie_secure()}"})
+        cookies = [f"adalya_session={tok}; Path=/; Max-Age=43200; HttpOnly; SameSite=Strict{self.cookie_secure()}"]
+        cookies.extend(extra_cookies or [])
+        self.json(200, {"ok": True, "user": u}, {"Set-Cookie": cookies})
 
     def body(self, max_bytes=100_000):
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -3872,7 +4346,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         for k, v in (extra or {}).items():
-            self.send_header(k, v)
+            if isinstance(v, (list, tuple)):
+                for item in v:
+                    self.send_header(k, item)
+            else:
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
 
