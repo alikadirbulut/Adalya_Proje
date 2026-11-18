@@ -1,12 +1,14 @@
-# Adalya — Site Test Day
+﻿# Adalya — Site Test Day
 
 Everything here is read-only. Nothing changes a device. Results land in the `results` folder next to the script.
 
 ## Before you go
 - [ ] Laptop has Python 3 (`python --version`). No extra packages needed.
-- [ ] Copy this whole `adalya-toolkit` folder to the laptop.
+- [ ] Copy this whole `adalya-toolkit` folder to the laptop (not into OneDrive).
 - [ ] Update `devices.json` if any IP changed since the last visit.
 - [ ] Bring an Ethernet cable. Test from a **wired** connection to the Ruijie switch, so the laptop's own Wi-Fi doesn't distort the results.
+- [ ] Confirm the installed build: open **Nasıl kullanılır** and check the version at the bottom (**3.2**), or `/api/me` → `version`.
+- [ ] Phone test once before leaving: log in as Yönetici and as Güvenlik; the top bar/menu, Vardiya and camera wall should work. Add it to the home screen if wanted.
 
 ## 1. Baseline health check (2 min)
 ```
@@ -79,7 +81,7 @@ Demo checklist before the site day:
 - [ ] **Vardiya**: 4/6/8/10 wall, click a tile to enlarge; quick guest entry.
 - [ ] **Kayıt istekleri**: submit `/kayit` from the phone, approve on the PC, open the generated invite link.
 - [ ] **Mobil**: on a phone-width window as Yönetici/Güvenlik, the top bar opens the drawer, groups show badges, forms are full width, and tables scroll sideways.
-- [ ] **Proje**: read the biography and check the memorial dates.
+- [ ] **Nasıl kullanılır**: watch the video, check the biography and memorial dates.
 
 On site, live (opens http://127.0.0.1:8080 in the browser):
 ```
@@ -114,3 +116,4 @@ On the day:
 - [ ] SNMP results (copy from the screen)
 - [ ] Router: ISP name, firmware version, screenshot of SNMP / remote management settings
 - [ ] NVR: Info → BPS screenshot (live bitrate per channel)
+

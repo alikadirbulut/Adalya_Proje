@@ -49,7 +49,8 @@ I'm continuing two connected pieces of work for **Adalya Sitesi** (a residential
 ## Next tasks (suggested order; ask me before starting a big one)
 
 ### 1. Bring back the site results (when I have them)
-Update `devices.json`, the troubleshooting status below, and the checklist from what I bring back. Then go through `ON-SITE-CHECKLIST.md` step 2.3: every NVR feature of the panel has only been tested against a **simulated** Dahua NVR. Fix whatever the real NVR answers differently (snapshots, record search/download, logs, disk info).
+### 1. Bring back the site results (when I have them) — **next**
+Update `devices.json`, the troubleshooting status below, and the checklist from what I bring back. Then go through `ON-SITE-CHECKLIST.md` step 2.3: every NVR feature of the panel has only been tested against a **simulated** Dahua NVR. Fix whatever the real NVR answers differently (snapshots, record search/download, logs, disk info). Also verify on a real phone: mobile drawer for Yönetici/Güvenlik, camera wall 4/6/8/10, click-to-enlarge, notifications.
 
 ### 2. True live video (after checklist step 2.4 results)
 Snapshots are near-live only. Plan: a small media server (**go2rtc**, single exe, or MediaMTX) on the panel PC pulls each camera's **RTSP sub stream** from the NVR (`rtsp://<user>:<pass>@192.168.0.23:554/cam/realmonitor?channel=N&subtype=1`) **once**, however many people watch, and serves it to the browser (WebRTC/MSE, under 1 s delay). It must listen on localhost only; browsers reach it **through the panel**, so roles and resident camera access still apply (needs a WebSocket/HTTP proxy in the panel, standard library). Needs the sub stream in **H.264** (H.265 is unreliable in browsers; keep the main stream H.265 for recording) and a separate **view-only NVR user** whose login go2rtc stores (on the panel PC only, never in git). Fallback if it suits: the NVR's MJPEG stream (`/cgi-bin/mjpg/video.cgi?channel=N&subtype=1`) proxied by the panel. Keep the snapshot view as the fallback when video fails.
@@ -67,6 +68,7 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 | D | Meetings and decision book: agenda, invitation letters (exists in Mesaj gönder), signature list, proxies, quorum by arsa payı and headcount, minutes; notarised paper book stays official, the panel prints the working copy | Later |
 | E (rest) | Income/expense beyond aidat, işletme projesi (KMK 37), receipts (makbuz) | **Done** (Phases 3–4) |
 | F | Online resident portal (see task 3) | Depends on the remote-access decision |
+| G | Registration/approval, 2 accounts per flat, 2 devices, invite links, notifications, mobile shell, onboarding video | **Done** (Phases 6–10) |
 
 **Site manager legal duties to turn into features** (Kat Mülkiyeti Kanunu 35–39):
 - KMK 35: carry out kurul decisions; maintenance, repair and protection of common areas; insurance; collect advances; pay debts; receive notifications; protect deadlines and rights; enforcement and kanuni ipotek against non-payers; bank account in the site's name; call the kurul.
@@ -77,6 +79,11 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 - Practical list: ordinary general assembly in January, invitation ≥15 days before; enforce yönetim planı rules; elevator monthly maintenance, yearly A-type inspection, red label = stop use; roof, facade, sewage, booster pump, generator, heating; cleaning and landscaping; staff SGK, salaries, leave, severance; İSG (6331): risk assessment, safety specialist, workplace doctor; enforcement, kanuni ipotek, müdahalenin men'i.
 
 ### 5. Known gaps and small fixes
+- **Real site test is the next step:** only the simulated NVR has been tested. Bring back `nvr-*`, drop logs and screenshots, then fix snapshots/record search/logs/disk.
+- **No background push / e-mail / SMS:** notifications are in-app (bell, phone tab) and only pop while the app is open. True push needs HTTPS + VAPID; sending mail/SMS needs a provider.
+- **Android install:** a real PWA without the URL bar needs HTTPS. On plain HTTP only a browser shortcut exists. iPhone Add to Home Screen is standalone.
+- **Logo:** the app icon is still the black-and-white photo; the house/badge illustration was proposed but not applied.
+- **Onboarding video is silent:** no voiceover/music; 46 s, captions only.
 - Bulk onboarding is still one approval at a time; a later improvement is one invite code per flat and a CSV of links.
 - Import preview counts duplicate people/plates within one file twice (flats are already handled).
 - Aidat late fee is only calculated, never charged automatically (on purpose); receipts exist since Phase 3.
@@ -131,9 +138,10 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 
 ### Testing
 - Demo: `python adalya_panel.py --demo` or `demo.bat` → `http://127.0.0.1:8080` (next free port if busy; no login, simulated NVR, fictional residents and six months of aidat, two seeded notifications, role selector in the menu). For a phone on the same Wi-Fi: `python adalya_panel.py --demo --lan --port 3000`, then open `http://<pc-ip>:3000/demo?role=resident&to=/%23/dairem` (or `role=staff` → Vardiya, `role=admin`). It works on copies in `data-demo/`, recreated at each start, so the real files stay untouched.
-- API tests (208 checks: roles and KVKK limits, import CSV/XLSX, plate lookup, visitors, devices, aidat math, resident camera access, calendar/duties/tasks, contracts, document upload/download/delete, announcements/read receipts, guest passes, parcels, request categories/photos/threads, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminder queue, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications, resident cars, audit): start a fresh demo with `--no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`.
+- API tests (209 checks: roles and KVKK limits, import CSV/XLSX, plate lookup, visitors, devices, aidat math, resident camera access, calendar/duties/tasks, contracts, document upload/download/delete, announcements/read receipts, guest passes, parcels, request categories/photos/threads, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminder queue, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications, resident cars, audit): start a fresh demo with `--no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`.
 - Python compatibility: on Python 3.12+ the tokenizer can find f-strings that older Pythons reject (backslash or reused quote inside `{}`); keep the code 3.9-compatible.
 - After big HTML edits: extract the `<script>` from `panel.html` and run `node --check` on it; `python -m py_compile adalya_panel.py`. Then check the pages in the browser (use a separate tab if I'm clicking around in the preview myself).
+
 
 
 

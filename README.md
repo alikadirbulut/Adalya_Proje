@@ -1,4 +1,4 @@
-﻿# Adalya Paneli
+# Adalya Paneli
 
 **A local management site for the cameras and network of Adalya Sitesi.**
 Live view, recordings, drop history, logs, exports, maintenance notes and a site map, all in one place, running entirely inside the site's own network.
@@ -115,13 +115,13 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
 
 | Page | What you get |
 |---|---|
-| **Takvim ve görevler** | A year calendar of the manager's KMK duties: işletme projesi (KMK 37), genel kurul invitation at least 15 days ahead, ordinary general assembly in January, annual accounts to the kurul (KMK 39), notary closing of the decision book by end of January (KMK 36), year-end cash/bank reconciliation and monthly elevator maintenance. Each duty can be ticked off for the year (or the month). You add your own dated tasks, with one-click templates for the practical yearly duties (elevator A-type inspection, insurance renewal, İSG, fire extinguishers). The page says plainly that it is a helper, **not legal advice**; the yönetim planı and a lawyer have the final word. |
-| **İşletme projesi** | KMK 37 builder: yearly income/expense lines, totals, the amount to collect as advance, **per-flat advance by arsa payı**, then "Bildirildi" (starts the 7-day objection window and locks the lines) and "Kesinleştir" (warns if the window is still open). Shows the objection deadline and the per-flat table. A helper, not legal advice. |
+| **Takvim ve işler** | A year calendar of the manager's KMK duties: işletme projesi (KMK 37), genel kurul invitation at least 15 days ahead, ordinary general assembly in January, annual accounts to the kurul (KMK 39), notary closing of the decision book by end of January (KMK 36), year-end cash/bank reconciliation and monthly elevator maintenance. Each duty can be ticked off for the year (or the month). You add your own dated tasks, with one-click templates for the practical yearly duties (elevator A-type inspection, insurance renewal, İSG, fire extinguishers). The page says plainly that it is a helper, **not legal advice**; the yönetim planı and a lawyer have the final word. |
+| **Yıllık bütçe (işletme projesi)** | KMK 37 builder: yearly income/expense lines, totals, the amount to collect as advance, **per-flat advance by arsa payı**, then "Bildirildi" (starts the 7-day objection window and locks the lines) and "Kesinleştir" (warns if the window is still open). Shows the objection deadline and the per-flat table. A helper, not legal advice. |
 | **Gelir-gider** | Income and expenses beyond aidat: date, tür, category (kira, bağış, temizlik, asansör, elektrik, su, personel, bakım, vergi…), explanation, amount, note. Year totals (gelir, gider, net), list with delete, CSV export. All changes logged. |
-| **Sözleşmeler ve poliçeler** | Contracts and insurance policies with provider, start/end dates, amount, note and an attached document. Shows valid / expiring within 30 days / expired, with a renewal warning, and feeds the alert card on Bugün. |
+| **Sözleşmeler** | Contracts and insurance policies with provider, start/end dates, amount, note and an attached document. Shows valid / expiring within 30 days / expired, with a renewal warning, and feeds the alert card on Bugün. |
 | **Belgeler** | Document archive: upload PDF, Word, Excel, images or text (max 10 MB), with category and note; download and delete. Files are kept in `data/belgeler/`, which is part of the `data/` backup. Uploads, downloads and deletions are written to the audit log. Admin only. |
 | **Bakım günlüğü** | Notes on what was done on site, by whom and when, optionally attached to a device. |
-| **NVR arayüzü** | The Dahua NVR's own web interface inside the panel, with an "open in new tab" button for NVR firmware that refuses to be embedded. |
+| **Kayıt cihazı (NVR)** | The Dahua NVR's own web interface inside the panel, with an "open in new tab" button for NVR firmware that refuses to be embedded. |
 | **Yedekler** | Daily automatic backup to `data/yedekler/` (hour and how many to keep are configurable), "Şimdi yedek al", download, and a **restore** that first takes a safety backup, then restores the database in place (safe while the panel runs) and reloads devices, site and accounts. Restore needs the typed confirmation GERI YUKLE. |
 | **Ayarlar** | NVR connection, user accounts, **two-step login (TOTP)** for the admin account, the memorial section (text and photo), site name, support contact, map labels, and your own password. |
 
@@ -184,16 +184,20 @@ To run it for real instead: `python adalya_panel.py` (this computer only) or `st
 
 The short version (full guide: [INSTALL.md](INSTALL.md)):
 
-1. Put the panel on **one always-on computer** in the security room, wired to the switch and on the UPS.
-2. Give it a fixed address (`192.168.0.30`) with a DHCP reservation on the router.
-3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan --port 8080`, or any other free port such as `--port 3000`). It always uses port 8080 by default so bookmarks keep working, and says so if that port is taken. It restarts itself if it stops. Allow Python through Windows Firewall on private networks.
+1. Put the panel on **one always-on computer** in the security room, wired to the switch and on the UPS. Keep the live folder out of OneDrive; use `C:\AdalyaPanel`.
+2. Install **Python 3.9+** with “Add to PATH”, then give the PC a fixed local address (`192.168.0.30`) with a DHCP reservation on the router.
+3. Start it with `start-panel.bat` (or `python adalya_panel.py --lan --port 8080`, or any other free port such as `--port 3000`). It restarts itself if it stops. Allow Python through Windows Firewall on **private** networks.
 4. Open `http://127.0.0.1:8080` on that computer and **create the first admin account**.
 5. **Ayarlar → NVR bağlantısı**: enter the NVR address, user and password. The password is never saved, so reconnect after each restart.
-6. **Ayarlar → Kullanıcılar**: create an account for each person.
-7. Everyone else opens **`http://192.168.0.30:8080`** in their browser on the site network.
-8. Put a shortcut to `start-panel.bat` in the Windows Startup folder (`Win+R` → `shell:startup`) so it starts with the computer.
+6. **Ayarlar → Kullanıcılar**: create a personal account for each staff member. Turn on **two-step login** for admins.
+7. **Residents**: share `http://192.168.0.30:8080/kayit`; approve applications in **Site sakinleri → Kayıt istekleri** and send the generated invite link. Max 2 accounts per flat, 2 devices per account.
+8. Everyone else opens **`http://192.168.0.30:8080`** on the site network. iPhone: Safari → Add to Home Screen. Android: a real installed app needs HTTPS; otherwise it is a browser shortcut.
+9. **Backups:** daily automatic backups land in `data/yedekler/`; copy `data/`, `media/`, `site.json`, `devices.json` and `site-plan.webp` to a USB stick monthly and test one restore.
+10. Put a shortcut to `start-panel.bat` in the Windows Startup folder (`Win+R` → `shell:startup`) so it starts with the computer. Reboot once and verify.
 
 Don't install a separate copy on each person's device. One panel means one history, one download log and one NVR connection.
+
+**Before the site day:** read [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md). The panel has only been tested against the **simulated** NVR so far.
 
 ## Users and roles
 
@@ -356,7 +360,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Current build: version 3.2** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
 - **Tests:** `tests/api_smoke.py` runs **209 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
-- **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
+- **Site test pending (next step):** the real NVR and cameras have not been tested yet. Live video is not implemented — snapshots only. Use [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md), then bring back the results.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
 - **Live video (planned, needs site tests first):** the panel shows NVR snapshots, not video. True live video means taking the NVR's RTSP sub stream (`/cam/realmonitor?channel=N&subtype=1`, port 554) through a small media server on the panel PC (e.g. go2rtc: one pull per camera however many people watch, sub-second delay, playable in the browser), reachable only through the panel so roles and resident camera access still apply. It needs the sub stream in **H.264** (browsers play H.265 unreliably) and a separate view-only NVR user, because the media server must store its login. A cheaper fallback is the NVR's MJPEG stream if this model supports it. The tests that decide it are in ON-SITE-CHECKLIST.md, step 2.4.
 - **Next on the roadmap:** meetings and decision book (agenda, proxies, quorum by arsa payı and headcount, minutes); income and expenses beyond aidat (işletme projesi, yearly account report, receipts); later an online resident portal kept separate from the camera system (VPN for managers and security, a portal without any camera features for residents). Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
@@ -368,6 +372,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 | [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) | The next site visit, step by step: cameras first (reservations, old-subnet cameras, offline cameras, weak signal, AP facts, NVR health), then connecting the panel to the real NVR, testing every page, and the live-video tests (RTSP, codecs, MJPEG) |
 | [TEST-PLAN.md](TEST-PLAN.md) | How to use the site test toolkit and test each panel page |
 | [INSTALL.md](INSTALL.md) | Installing the panel on the always-on computer, fixed IP, autostart, accounts, backups |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version, from 1.0 to the current build |
 | [NEXT-PROMPT.md](NEXT-PROMPT.md) | Full project state and the next tasks, ready to paste into a new working session |
 
 ## Files in this repository
@@ -381,10 +386,11 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 | `devices.json` | Watched devices, channels, map positions |
 | `site.json` | Site name, memorial section, map labels, map rotation |
 | `site-plan.webp` | Map background (3D render of the site) |
-| `media/` | Memorial photo |
+| `media/` | Memorial photo, onboarding video (`onboarding.mp4`) and poster |
+| `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` | App icons |
 | `start-panel.bat` | Start script for the always-on PC (live, site network, port 8080, restarts itself) |
 | `demo.bat` | Double-click to try the demo on Windows |
-| `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, `NEXT-PROMPT.md` | Documents (see above) |
+| `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, `NEXT-PROMPT.md`, `CHANGELOG.md` | Documents (see above) |
 | `docs/` | README images, the earlier Google aerial view |
 | `tests/api_smoke.py` | Automated checks against a demo server: `python adalya_panel.py --demo --no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`. Run the demo from a copy of the folder: demo mode writes device and map changes to `devices.json`. |
 | `LICENSE` | All rights reserved |

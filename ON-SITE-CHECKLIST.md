@@ -209,7 +209,7 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
 
 ### 2.6 Other screens
 - [ ] Restart with `python adalya_panel.py --lan` and allow Python through Windows Firewall (private networks).
-- [ ] From a phone on the site Wi-Fi: `http://<laptop-ip>:8080` opens and logs in? ☐
+- [ ] From a phone on the site Wi-Fi: `http://<laptop-ip>:8080` (or the port you chose) opens and logs in? ☐
 - [ ] Create one **Güvenlik** account for security and test it on their device.
 
 ### 2.7 Leave it running
