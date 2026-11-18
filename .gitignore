@@ -1,0 +1,14 @@
+# Live data: history, user accounts (password hashes), download log. Never commit.
+data/
+data-demo/
+
+# Site test toolkit output
+results/
+
+# Python and temp files
+__pycache__/
+*.pyc
+*.tmp
+
+# Replaced memorial photos
+media/*.eski
