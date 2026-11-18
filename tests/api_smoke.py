@@ -480,6 +480,15 @@ c, png = call("/icon-192.png", "none")
 check("png icon served", c == 200 and png[:4] == b"\x89PNG", c)
 c, at = call("/apple-touch-icon.png", "none")
 check("apple touch icon served", c == 200 and at[:4] == b"\x89PNG", c)
+c, vid = call("/media/onboarding.mp4", "none")
+check("onboarding video served", c == 200 and vid[4:8] == b"ftyp", c)
+import urllib.request as _ur
+_req = _ur.Request(BASE + "/media/onboarding.mp4", headers={"Range": "bytes=0-1023"})
+with _ur.urlopen(_req) as _r:
+    _code, _data, _cr = _r.status, _r.read(), _r.headers.get("Content-Range", "")
+check("video supports range requests", _code == 206 and len(_data) == 1024 and _cr.startswith("bytes 0-1023/"), _cr)
+c, post = call("/media/onboarding-poster.jpg", "none")
+check("video poster served", c == 200 and post[:2] == b"\xff\xd8", c)
 
 # audit trail
 c, au = call("/api/audit")

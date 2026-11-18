@@ -1,4 +1,4 @@
-# Adalya Paneli
+﻿# Adalya Paneli
 
 **A local management site for the cameras and network of Adalya Sitesi.**
 Live view, recordings, drop history, logs, exports, maintenance notes and a site map, all in one place, running entirely inside the site's own network.
@@ -72,7 +72,7 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 | ![Bugün](docs/screenshots/bugun.png) **Bugün** · what needs attention now | ![Vardiya ekranı](docs/screenshots/vardiya.png) **Vardiya ekranı** · quick guest entry and the 4/6/8/10 camera wall |
 | ![Canlı izleme](docs/screenshots/canli-izleme.jpg) **Canlı izleme** · picture from every camera | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the 3D view of the site |
 | ![Dairem](docs/screenshots/dairem.png) **Dairem** · resident phone home with notifications, cars and requests | ![İstekler](docs/screenshots/talepler.png) **İstekler** · conversation thread and Açık/İşlemde/Kapalı |
-| ![Bildirimler](docs/screenshots/bildirimler.png) **Bildirimler** · announcements and messages on the phone | ![Proje](docs/screenshots/proje.png) **Proje** · the memorial, biography and the story of the project |
+| ![Bildirimler](docs/screenshots/bildirimler.png) **Bildirimler** · announcements and messages on the phone | ![Nasıl kullanılır](docs/screenshots/nasil.png) **Nasıl kullanılır** · video, why-it-matters and Esin's profile |
 | ![Kayıt formu](docs/screenshots/kayit.png) **Kayıt formu** · public `/kayit`, phone required | ![Daire sayfası](docs/screenshots/daire.png) **Daire sayfası** · people, cars, accounts, requests, aidat |
 | ![Mobil yönetim](docs/screenshots/mobil-yonetim.png) **Mobil** · manager/Güvenlik top bar and menu | ![Giriş](docs/screenshots/giris.png) **Giriş** · the photo logo and first-run screen |
 
@@ -80,7 +80,7 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 
 ## Features, page by page
 
-The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera ve güvenlik**, **Site sakinleri**, **Ödemeler**, **Site işleri**, **Sistem** and **Proje**; residents get a **Site** group with Dairem. The active section header is highlighted, and a group shows the **sum of its sub-item notifications** on the header even when collapsed. A light/dark switch sits at the bottom of the menu (it follows the system until you choose), and **Ara (⌘K / Ctrl+K)** opens a quick search over residents, phones, plates, flats, documents, contracts and announcements. Residents get five large tabs at the bottom on a phone (Dairem, Kameralar and Harita when allowed, Bildirimler, Proje).
+The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera ve güvenlik**, **Site sakinleri**, **Ödemeler**, **Site işleri**, **Sistem** and **Bilgi** (Nasıl kullanılır); residents get a **Site** group with Dairem. The active section header is highlighted, and a group shows the **sum of its sub-item notifications** on the header even when collapsed. A light/dark switch sits at the bottom of the menu (it follows the system until you choose), and **Ara (⌘K / Ctrl+K)** opens a quick search over residents, phones, plates, flats, documents, contracts and announcements. Residents get five large tabs at the bottom on a phone (Dairem, Kameralar and Harita when allowed, Bildirimler, Proje).
 
 ### İzleme (monitoring)
 
@@ -129,7 +129,7 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
 
 | Page | What you get |
 |---|---|
-| **Proje** | The memorial for Esin Noğan — dates (18 Haziran 2026, 04:30), her **short biography** (Zonguldak, roots in Eskişehir and Sinop, a civil-servant family, raised in Antalya, Pamukkale and Near East University in Cyprus), a personal note from Ali, what the panel does, what went wrong and what was done, a step-by-step "if something happens" guide, and the privacy notice. |
+| **Nasıl kullanılır?** | A 45-second onboarding video (why the panel exists, what each role can do, ending with Esin Noğan), four plain-language reasons to use it, a first-five-minutes checklist, role cards, and **Esin's profile**: photo, dates, short biography, and Ali's note. Old `#/proje` links open this page. |
 
 ## How it works
 
@@ -352,8 +352,9 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Done (18 Nov, Phase 7):** vardiya camera wall selectable 4 / 6 / 8 / 10 (remembered), click a tile for a large live view; menu group headers show the sum of their notifications.
 - **Done (18 Nov, Phase 8):** request **conversations** with Açık / İşlemde / Kapalı statuses and resident follow-ups; **notification center** (bell, phone tab, badge) fed by new announcements and by **Mesaj gönder → Uygulama bildirimi** with ticked recipients; residents can add/edit **up to 2 vehicles**; **Esin Noğan biography** on the Proje page and in Ayarlar; PNG app icons and an install button; `/demo?role=…&to=…` role switch for testing.
 - **Done (19 Nov, Phase 9):** black-and-white **photo logo** used for the app icon (192/512/maskable), Apple touch icon, login screen, sidebar and registration page; **mobile shell for manager and Güvenlik** — top bar with logo and bell, off-canvas menu with backdrop, full-width forms, safe-area padding and 16 px inputs; iOS standalone meta tags; service-worker cache v4.
-- **Current build: version 3.1** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
-- **Tests:** `tests/api_smoke.py` runs **206 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
+- **Done (19 Nov, Phase 10):** **Nasıl kullanılır** replaces Proje (route `#/nasil`, old links redirect): a **45-second onboarding video**, four reasons to use the panel, first-five-minutes steps, role cards, and **Esin Noğan's profile** with her biography; the technical troubleshooting story moved out of the resident-facing page.
+- **Current build: version 3.2** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
+- **Tests:** `tests/api_smoke.py` runs **209 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
@@ -397,3 +398,5 @@ This is a personal project. No permission is granted to use, copy, modify or dis
 ---
 
 <p align="center"><i>Esin Noğan'ın anısına.</i></p>
+
+

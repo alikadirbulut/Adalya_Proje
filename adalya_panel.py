@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "3.1"
+VERSION = "3.2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -1268,6 +1268,45 @@ def r_photo_get(h, qs, user):
     ctype = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(p.rsplit(".", 1)[-1].lower(), "application/octet-stream")
     with open(p, "rb") as f:
         h.raw(200, f.read(), ctype)
+
+
+@route("GET", "/media/onboarding.mp4", need="none")
+def r_onboarding_video(h, qs, user):
+    path = os.path.join(HERE, "media", "onboarding.mp4")
+    if not os.path.isfile(path):
+        return h.json(404, {"error": "Video yok"})
+    size = os.path.getsize(path)
+    start, end, code = 0, size - 1, 200
+    rh = h.headers.get("Range", "")
+    if rh.startswith("bytes="):
+        try:
+            a, b = rh[6:].split(",")[0].split("-", 1)
+            if a == "":
+                start = max(0, size - int(b))
+            else:
+                start = int(a)
+                end = int(b) if b else size - 1
+            end = min(end, size - 1)
+            start = min(start, end)
+            code = 206
+        except (ValueError, TypeError):
+            return h.json(416, {"error": "Aralık geçersiz"})
+    with open(path, "rb") as f:
+        f.seek(start)
+        data = f.read(end - start + 1)
+    extra = {"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=86400"}
+    if code == 206:
+        extra["Content-Range"] = f"bytes {start}-{end}/{size}"
+    h.raw(code, data, "video/mp4", extra)
+
+
+@route("GET", "/media/onboarding-poster.jpg", need="none")
+def r_onboarding_poster(h, qs, user):
+    path = os.path.join(HERE, "media", "onboarding-poster.jpg")
+    if not os.path.isfile(path):
+        return h.json(404, {"error": "Afiş yok"})
+    with open(path, "rb") as f:
+        h.raw(200, f.read(), "image/jpeg")
 
 
 def plan_file():

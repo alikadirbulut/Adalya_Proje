@@ -465,6 +465,33 @@ html[data-theme="dark"] {
 }
 body.has-tabbar main { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
 body.has-tabbar .tabbar { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+
+/* onboarding page */
+.onboard { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 14px; background: #000; object-fit: cover; }
+.whygrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.why { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; padding: 14px 16px; background: var(--soft); }
+.why b { display: block; font-size: 15px; margin-bottom: 4px; }
+.why p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.steps { margin: 0; padding-left: 20px; }
+.steps li { margin: 9px 0; line-height: 1.55; }
+.cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.rolecard { border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.rolecard b { display: block; margin-bottom: 4px; }
+.rolecard p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.membio { white-space: pre-wrap; margin: 12px 0; color: var(--text); }
+@media (max-width: 760px) { .whygrid, .cols3 { grid-template-columns: 1fr; } }
+.memcard2 { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 26px; align-items: start; }
+.memcard2 .memphoto { width: 300px; aspect-ratio: 4 / 5; border-radius: 16px; overflow: hidden; background: var(--soft); }
+.memcard2 .memphoto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.memcard2 .memtext { min-width: 0; }
+.memcard2 .memfacts { grid-column: 1 / -1; }
+.memcard2 .facts { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.memcard2 .membelow { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .memcard2 { grid-template-columns: 1fr; }
+  .memcard2 .memphoto { width: 100%; max-width: 340px; }
+  .memcard2 .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>
 </head>
 <body>
@@ -607,7 +634,7 @@ const NAV = [
   ["Ödemeler", false, [["aidat", "Aidat ve ödemeler", "A"], ["isletme", "Yıllık bütçe", "A"], ["gelirgider", "Gelir-gider", "A"]]],
   ["Site işleri", false, [["takvim", "Takvim ve işler", "A"], ["sozlesmeler", "Sözleşmeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
   ["Sistem", false, [["kullanicilar", "Kullanıcılar ve cihazlar", "A"], ["ag", "Ağ cihazları", "S"], ["yedekler", "Yedekler", "A"], ["nvr", "Kayıt cihazı (NVR)", "S"], ["ayarlar", "Ayarlar", "S"]]],
-  ["Proje", false, [["proje", "Proje", "SR"]]],
+  ["Bilgi", false, [["nasil", "Nasıl kullanılır", "SR"]]],
 ];
 const ROLE_TR = { admin: "Yönetici", staff: "Güvenlik", resident: "Site sakini" };
 const role = () => S.me?.user?.role;
@@ -633,7 +660,7 @@ function tabbar() {
     ${camsOn ? `<a href="#/canli" data-nav2="canli"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="12.5" height="12" rx="2.2"/><path d="m15.5 10.2 5-3v9.6l-5-3"/></svg>Kameralar</a>
     <a href="#/harita" data-nav2="harita"><svg viewBox="0 0 24 24"><path d="m9 4 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14M15 6v14"/></svg>Harita</a>` : ""}
     <a href="#/bildirimler" data-nav2="bildirimler"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>Bildirimler<span class="bell-n nb" style="display:none"></span></a>
-    <a href="#/proje" data-nav2="proje"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 8h.01"/></svg>Proje</a>
+    <a href="#/nasil" data-nav2="nasil"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 8h.01"/></svg>Nasıl</a>
   </nav>`;
 }
 
@@ -666,7 +693,7 @@ function shell() {
         <button class="theme-toggle" id="themeBtn" aria-label="Tema değiştir">${themeEffective() === "dark"
           ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Açık tema</span>'
           : '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span>Koyu tema</span>'}</button>
-        <a class="memorial" id="sideMemorial" href="#/proje" style="text-decoration:none;display:block">${esc(memLine())}</a>
+        <a class="memorial" id="sideMemorial" href="#/nasil" style="text-decoration:none;display:block">${esc(memLine())}</a>
       </div>
     </aside>
     <main id="main"></main>
@@ -706,7 +733,8 @@ function shell() {
 
 function parseHash() {
   const h = location.hash.replace(/^#\/?/, "");
-  const [p, q] = h.split("?");
+  let [p, q] = h.split("?");
+  if (p === "proje") p = "nasil";
   const home = isResident() ? "dairem" : "genel";
   return { page: PAGES[p] && canSee(p) ? p : home, params: new URLSearchParams(q || "") };
 }
@@ -3588,57 +3616,69 @@ PAGES.nvr = {
   },
 };
 
-PAGES.proje = {
+PAGES.nasil = {
   render(el) {
     const m = site().memorial, sup = site().support_contact;
     const by = m.created_by ? `Bu panel, ${esc(m.created_by)} tarafından ${esc(trGen(m.name))} anısına hazırlandı.` : `Bu panel ${esc(trGen(m.name))} anısına hazırlandı.`;
-    el.innerHTML = head("Proje", "Bu panel neden ve nasıl kuruldu") + (m.name ? `
-      <div class="card memcard">
+    el.innerHTML = head("Nasıl kullanılır?", "Adalya Paneli'ni kullanmanın en kolay yolu") + `
+      <div class="card">
+        <video class="onboard" controls playsinline preload="metadata" poster="/media/onboarding-poster.jpg">
+          <source src="/media/onboarding.mp4" type="video/mp4">
+          Tarayıcınız videoyu gösteremiyor. Videoyu doğrudan açmak için <a href="/media/onboarding.mp4">buraya</a> dokunun.
+        </video>
+        <div class="hint" style="margin-top:8px">45 saniyede: bu panel neden var, ne işe yarar ve Esin Noğan.</div>
+      </div>
+
+      <div class="card"><h2>Neden bu uygulama?</h2>
+        <div class="whygrid">
+          <div class="why"><b>Aidat ve ödemeler</b><p>Bakiyenizi ve ödemelerinizi görün; ödeme bilgisine ve makbuzunuza ulaşın.</p></div>
+          <div class="why"><b>Duyuru ve mesajlar</b><p>Su kesintisi, toplantı, kural… hepsi telefonunuza bildirim olarak gelsin; kaçırmayın.</p></div>
+          <div class="why"><b>Talepler</b><p>Arızanız kaybolmasın; yönetimle konuşma olarak kalsın, sonucunu görün.</p></div>
+          <div class="why"><b>Güvenlik</b><p>Ziyaretçinizi önceden bildirin; kargo ve kameraları takip edin.</p></div>
+        </div>
+      </div>
+
+      <div class="card"><h2>İlk 5 dakika</h2>
+        <ol class="steps">
+          <li><b>Giriş yapın.</b> Yönetimden aldığınız kullanıcı adı ve şifreyle girin; şifrenizi “Şifrem” bölümünden değiştirebilirsiniz.</li>
+          <li><b>Dairem'e bakın.</b> Aidat, borç, son hareketler ve kayıtlı araçlarınız burada.</li>
+          <li><b>Bildirimlere izin verin.</b> Yeni duyuru ve mesajları kaçırmamak için “Telefon bildirimi izni”ne dokunun.</li>
+          <li><b>Talep açın.</b> Konu seçin, isterseniz fotoğraf ekleyin; yönetim yanıtladığında aynı ekranda görürsünüz.</li>
+          <li><b>Ziyaretçi ekleyin.</b> Kapıdaki güvenlik, izin verdiğiniz kişiyi listede görür.</li>
+        </ol>
+      </div>
+
+      <div class="card"><h2>Rolünüze göre</h2>
+        <div class="cols3">
+          <div class="rolecard"><b>Yönetici</b><p>Tüm daireler, aidat ve ödemeler, duyurular, talepler, kayıt onayları, yedekler.</p></div>
+          <div class="rolecard"><b>Güvenlik</b><p>Vardiya, plaka sorgulama, ziyaretçi ve kargo kaydı, kameralar.</p></div>
+          <div class="rolecard"><b>Site sakini</b><p>Yalnızca kendi dairesi: aidat, talepler, ziyaretçi izni, duyurular.</p></div>
+        </div>
+      </div>
+
+      ${m.name ? `<div class="card memcard2">
         ${m.has_photo ? `<div class="memphoto"><img src="/media/memorial?v=${encodeURIComponent(m.photo)}" alt="${esc(m.name)}" style="object-position:${m.photo_x}% ${m.photo_y}%"></div>` : ""}
         <div class="memtext">
           <div class="memname">${esc(m.name)}</div>
           ${lifeSpan(m) ? `<div class="memdates">${esc(lifeSpan(m))}${m.death_time ? " · " + esc(m.death_time) : ""}</div>` : ""}
           ${m.profession ? `<div class="memprof">${esc(m.profession)}</div>` : ""}
-          ${m.note ? `<div class="memnote">${esc(m.note)}</div>` : ""}
-          <div class="memby">${by}</div>
-          ${isAdmin() ? '<div style="margin-top:12px"><a class="btn" href="#/ayarlar">Bu bölümü düzenle</a></div>' : ""}
-        </div></div>` : "") + (m.bio ? `
-      <div class="card prose"><h2>Hayatı</h2><p>${esc(m.bio)}</p>
-        <div class="facts">
+          ${m.bio ? `<p class="membio">${esc(m.bio)}</p>` : ""}
+        </div>
+        <div class="memfacts"><div class="facts">
           ${m.birth_place ? `<div class="fact"><div class="l">Doğum yeri</div><div class="v">${esc(m.birth_place)}</div></div>` : ""}
           ${m.roots ? `<div class="fact"><div class="l">Kökleri</div><div class="v">${esc(m.roots)}</div></div>` : ""}
           ${m.parents ? `<div class="fact"><div class="l">Ailesi</div><div class="v">${esc(m.parents)}</div></div>` : ""}
           ${m.education ? `<div class="fact"><div class="l">Eğitimi</div><div class="v">${esc(m.education)}</div></div>` : ""}
           ${m.raised ? `<div class="fact"><div class="l">Büyüdüğü yer</div><div class="v">${esc(m.raised)}</div></div>` : ""}
-        </div>
-        ${m.note_ali ? `<div class="memnote" style="margin-top:14px">${esc(m.note_ali)}</div>` : ""}
-      </div>` : "") + `
-      <div class="card prose"><h2>Bu panel ne yapar?</h2>
-        <ul><li>Sitedeki tüm kameraları ve ağ cihazlarını birkaç saniyede bir kontrol eder; kim açık, kim kapalı, haritada gösterir.</li>
-        <li>Her kopmayı başlangıç, bitiş ve süresiyle kaydeder. Kısa kopmalar (ör. 30 saniyelik) bile kaybolmaz.</li>
-        <li>NVR'ye bağlanır: canlı görüntü, video kayıtlarını arama ve indirme, NVR logları, disk durumu.</li>
-        <li>Bir olay olduğunda kayıtları, logları ve tüm geçmişi tek tuşla dışa aktarır; kimin neyi indirdiği kayıt altındadır.</li>
-        <li>Sahada yapılan her iş bakım günlüğüne yazılır; sonra gelen kişi ne yapıldığını görür.</li>
-        <li>Tamamen site içinde çalışır. İnternete veya buluta bağlı değildir.</li></ul></div>
-      <div class="card prose"><h2>Ne olmuştu?</h2>
-        <p>Önceki servis sağlayıcı desteği bıraktıktan sonra kameraların bir kısmı ekranda kararmaya başladı. İncelemede kameraların bozuk olmadığı, sorunun ağdan kaynaklandığı görüldü:</p>
-        <ul><li>Router kameralara kalıcı değil geçici adres veriyordu; adres değişince kayıt cihazı kamerayı kaybediyordu.</li>
-        <li>Bazı kameralar eski bir adres aralığında (192.168.1.x) kalmıştı; yeni ağdan erişilemiyordu.</li>
-        <li>Uzaktaki kameralar zayıf Wi-Fi ve ucuz sinyal tekrarlayıcıları üzerinden bağlıydı; sinyal düşünce yaklaşık 30 saniyelik kopmalar oluyordu.</li></ul></div>
-      <div class="card prose"><h2>Neler yapıldı?</h2><div class="timeline">
-        <div><b>9 Kasım 2026</b> · Sistem devralındı, cihazlar ve şifreler toplandı, inceleme başladı.</div>
-        <div><b>14 Kasım 2026</b> · Ağ tarandı, kök neden bulundu. Router'ın adres havuzu daraltıldı, kameraların adresleri MAC'e göre sabitlendi; kameralar geri gelmeye başladı.</div>
-        <div><b>15–18 Kasım 2026</b> · Saha ölçüldü (yaklaşık 90 × 90 m), güney için dış mekân access point seçildi, saha test araçları ve bu panel hazırlandı.</div>
-        <div><b>Sırada</b> · Eski aralıktaki kameraların taşınması, kapalı kameralar için saha turu, güney access point kurulumu, uzun vadede kablolama.</div></div></div>
-      <div class="card prose"><h2>Bir sorun olursa ne yapılır?</h2><ol>
-        <li><a href="#/genel">Genel bakış</a>'a bakın: hangi kamera kapalı, ne zamandan beri?</li>
-        <li><a href="#/olaylar">Olaylar ve loglar</a>'dan olayın olduğu saat aralığını bulun.</li>
-        <li><a href="#/kayitlar">Kayıtlar</a>'dan ilgili kamerayı ve saati seçip videoyu indirin.</li>
-        <li><a href="#/disa">Dışa aktar</a>'dan o günleri kapsayan tam paketi indirin.</li>
-        <li>Yapılanı <a href="#/bakim">Bakım günlüğü</a>'ne yazın.</li>
-        <li>Teknik destek: ${sup ? esc(sup) : '<span class="hint">henüz eklenmedi (Ayarlar)</span>'}</li></ol>
-        <div class="warnbox">Router'ı, NVR'yi veya switch'i sıfırlamayın ya da ayarlarını değiştirmeyin. Kamera adresleri bu cihazlardaki ayarlara bağlıdır; bir sıfırlama kameraların yeniden kopmasına yol açar.</div></div>
-      <div class="card prose"><h2>Gizlilik</h2><p>Kamera kayıtları ve loglar kişisel veridir (KVKK). Panele herkes kendi kullanıcı adı ve şifresiyle girer, her indirme kim ve ne zaman bilgisiyle kaydedilir. İndirilen dosyaları yalnızca yetkili kişilerle paylaşın ve işiniz bitince silin.</p></div>
+        </div></div>
+        <div class="membelow">
+          ${m.note_ali ? `<div class="memnote">${esc(m.note_ali)}</div>` : ""}
+          <div class="memby">${by}</div>
+          ${isAdmin() ? '<div style="margin-top:12px"><a class="btn" href="#/ayarlar">Bu bölümü düzenle</a></div>' : ""}
+        </div></div>` : ""}
+
+      <div class="card prose"><h2>Gizlilik</h2><p>Kamera kayıtları ve loglar kişisel veridir (KVKK). Panele herkes kendi kullanıcı adı ve şifresiyle girer; her indirme kim ve ne zaman bilgisiyle kaydedilir. Sakin hesapları yalnızca izin verilen kameraların canlı görüntüsünü görür, kayıtları göremez.</p></div>
+      ${sup ? `<div class="hint">Sorunuz olursa: ${esc(sup)}</div>` : ""}
       <div class="hint">Adalya Paneli ${esc(S.me.version)}</div>`;
   },
 };
@@ -3670,7 +3710,7 @@ PAGES.ayarlar = {
         <div class="hint" style="margin-top:6px">Güvenlik: kameraları izler, kayıt ve log indirir, plaka sorgular, ziyaretçi defterini tutar, sakinlerin adı ve telefonunu görür. Yönetici: hepsine ek olarak sakin kayıtları, mesajlar, ayarlar, kullanıcılar ve indirme kaydı. Site sakini: yalnızca kendi dairesi, araçları ve talepleri; kameraları ve kayıtları <b>göremez</b>.</div>
         <div class="err" id="uErr"></div><div class="okmsg" id="uOk"></div></div>
 
-      <div class="card"><h2>Anma bölümü <small>Proje sayfasında ve menünün altında görünür</small></h2>
+      <div class="card"><h2>Anma bölümü <small>Nasıl kullanılır sayfasında ve menünün altında görünür</small></h2>
         <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
           <div>
             <div class="photoprev"><img id="mPrev" src="${m.has_photo ? "/media/memorial?v=" + encodeURIComponent(m.photo) : ""}" alt="" style="object-position:${m.photo_x}% ${m.photo_y}%;${m.has_photo ? "" : "display:none"}"></div>
@@ -3701,7 +3741,7 @@ PAGES.ayarlar = {
             <label for="mEdu" style="margin-top:10px">Eğitimi</label><input id="mEdu" value="${esc(m.education || "")}">
             <label for="mBio" style="margin-top:10px">Kısa hayatı</label><textarea id="mBio" style="min-height:110px">${esc(m.bio || "")}</textarea>
             <label for="mNoteAli" style="margin-top:10px">Ali'nin notu</label><textarea id="mNoteAli" style="min-height:80px">${esc(m.note_ali || "")}</textarea>
-            <div style="margin-top:10px"><button class="primary" id="mSave">Kaydet</button> <a class="btn" href="#/proje">Proje sayfasını gör</a></div>
+            <div style="margin-top:10px"><button class="primary" id="mSave">Kaydet</button> <a class="btn" href="#/nasil">Nasıl kullanılır sayfasını gör</a></div>
             <div class="err" id="mErr"></div><div class="okmsg" id="mOk"></div>
           </div>
         </div></div>
