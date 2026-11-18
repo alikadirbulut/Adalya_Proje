@@ -14,6 +14,8 @@ Live view, recordings, drop history, logs, exports, maintenance notes and a site
   This project was built by Ali Kadir Bulut in memory of Esin.
 </p>
 
+> **Personal project · All rights reserved.** See [License](#license).
+
 ---
 
 ## Contents
@@ -35,7 +37,9 @@ Live view, recordings, drop history, logs, exports, maintenance notes and a site
 15. [Security and privacy (KVKK)](#security-and-privacy-kvkk)
 16. [Troubleshooting](#troubleshooting)
 17. [Project status](#project-status)
-18. [Files in this repository](#files-in-this-repository)
+18. [Documents](#documents)
+19. [Files in this repository](#files-in-this-repository)
+20. [License](#license)
 
 ---
 
@@ -66,7 +70,7 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 | | |
 |---|---|
 | ![Genel bakış](docs/screenshots/genel-bakis.jpg) **Genel bakış** · status, map, alerts, recent drops | ![Canlı izleme](docs/screenshots/canli-izleme.jpg) **Canlı izleme** · picture from every camera |
-| ![Kayıtlar](docs/screenshots/kayitlar.jpg) **Kayıtlar** · find and download recordings | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the aerial view |
+| ![Kayıtlar](docs/screenshots/kayitlar.jpg) **Kayıtlar** · find and download recordings | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the 3D view of the site |
 | ![Proje](docs/screenshots/proje.jpg) **Proje** · the memorial and the story of the project | |
 
 *Screenshots are from demo mode, so the camera pictures are simulated.*
@@ -82,7 +86,7 @@ The menu on the left is grouped into four sections.
 | **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. Mini map, list of devices that need attention, recent drops, shortcuts for "something happened". |
 | **Canlı izleme** | A tile per camera with the NVR's latest picture, refreshed every few seconds. Click a tile to enlarge it (refreshes about every 1.5 s) and jump to its recordings. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
-| **Site haritası** | Full-screen map on the site's aerial image, with A/B/C blok labels. Pins are green (working), amber (dropped today) or red (down). Admins can drag pins and labels into place. |
+| **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Pins are green (working), amber (dropped today) or red (down). Admins can drag pins and labels into place and adjust the image rotation. |
 | **Ağ cihazları** | Router, switch, NVR and Wi-Fi devices with links to their own web pages, and a plain-language description of the network. |
 
 ### Kayıt ve kanıt (recordings and evidence)
@@ -193,8 +197,9 @@ Everyone logs in with their **own username and password**. Their name appears in
 
 ## Editing the map
 
-- The background is `site-plan.png` (or `.jpg` / `.webp`) in the panel folder. To change it, save a new image with the same name and refresh. The map adapts to the image's proportions.
-- **Site haritası → Haritayı düzenle** (admins): drag cameras, network devices and labels to their real positions. Positions save automatically: devices to `devices.json`, labels to `site.json`.
+- The background is `site-plan.webp` (or `.png` / `.jpg`) in the panel folder, currently a 3D render of the site. To change it, save a new image with that name (only one `site-plan.*` file) and refresh.
+- The browser **rotates** the image (34° by default, so B and C blok sit at the top), **removes a white background** automatically and crops to the site, so the picture fills the map. Both settings are stored in `site.json` → `plan`.
+- **Site haritası → Haritayı düzenle** (admins): a rotation slider with ±1° buttons and a "remove white background" switch appear; drag cameras, network devices and labels to their real positions. Everything saves automatically: devices to `devices.json`, labels and rotation to `site.json`.
 - **Ayarlar → Site ve harita**: rename, add or remove labels (A blok, B blok, C blok, Bahçe, Havuz…).
 - **Cihaz adları** shows or hides device names; **Tam ekran** makes the map fill the screen.
 
@@ -292,7 +297,18 @@ Camera recordings and logs are personal data of residents and visitors.
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
-- **Planned:** automatic discovery of new or moved devices; outdoor access point for the south side; recovery of the cameras still on `192.168.1.x`; long-term cabling.
+- **Next for the panel:** 8 / 16 / 32 view grid on Canlı izleme, device-type icons on the map, readable labels when a device is clicked.
+- **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
+- **Roadmap (brainstormed):** roles for site yöneticisi, güvenlik and site sakini; flats, residents and vehicles registry with plate lookup and visitor log; "send to residents" (WhatsApp, e-mail, printable letters); a yearly calendar of the manager's legal duties (Kat Mülkiyeti Kanunu 35–39); meetings and decision book; dues; later an online resident portal kept separate from the camera system. Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
+
+## Documents
+
+| Document | For |
+|---|---|
+| [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) | The next site visit, step by step: cameras first (reservations, old-subnet cameras, offline cameras, weak signal, AP facts, NVR health), then connecting the panel to the real NVR |
+| [TEST-PLAN.md](TEST-PLAN.md) | How to use the site test toolkit and test each panel page |
+| [INSTALL.md](INSTALL.md) | Installing the panel on the always-on computer, fixed IP, autostart, accounts, backups |
+| [NEXT-PROMPT.md](NEXT-PROMPT.md) | Full project state and the next tasks, ready to paste into a new working session |
 
 ## Files in this repository
 
@@ -303,13 +319,19 @@ Camera recordings and logs are personal data of residents and visitors.
 | `nvr.py` | Dahua NVR client (and the demo NVR) |
 | `adalya_test.py` | Site test toolkit |
 | `devices.json` | Watched devices, channels, map positions |
-| `site.json` | Site name, memorial section, map labels |
-| `site-plan.png` | Map background image |
+| `site.json` | Site name, memorial section, map labels, map rotation |
+| `site-plan.webp` | Map background (3D render of the site) |
 | `media/` | Memorial photo |
 | `start-panel.bat` | Start script for the always-on PC |
-| `INSTALL.md` | Installation guide |
-| `TEST-PLAN.md` | Site test-day checklist |
-| `docs/` | README images |
+| `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, `NEXT-PROMPT.md` | Documents (see above) |
+| `docs/` | README images, the earlier Google aerial view |
+| `LICENSE` | All rights reserved |
+
+## License
+
+**Copyright © 2026 Ali Kadir Bulut. All rights reserved.**
+
+This is a personal project. No permission is granted to use, copy, modify or distribute it without written permission from the author. The photograph of Esin Noğan and Ali Kadir Bulut is a private family photograph and may not be reused in any way. The site images, device lists and screenshots describe a private residential complex and may not be published. See [LICENSE](LICENSE) for the full text.
 
 ---
 

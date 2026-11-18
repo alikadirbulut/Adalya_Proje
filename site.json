@@ -9,14 +9,12 @@
     "note": "Çok güzel bir insandı.",
     "created_by": "Ali Kadir Bulut",
     "photo": "memorial.jpg",
-    "photo_x": 50,
+    "photo_x": 44,
     "photo_y": 35
   },
-  "labels": [
-    {"text": "B blok", "x": 43, "y": 19},
-    {"text": "C blok", "x": 20, "y": 44},
-    {"text": "A blok", "x": 46, "y": 73},
-    {"text": "Bahçe", "x": 52, "y": 42},
-    {"text": "Havuz", "x": 72, "y": 46}
-  ]
+  "labels": [],
+  "plan": {
+    "rotation": 34,
+    "trim_white": true
+  }
 }

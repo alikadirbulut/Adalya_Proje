@@ -53,6 +53,7 @@ SITE_DEFAULT = {
     "memorial": {"name": "Esin Noğan", "birth": "", "death": "", "profession": "", "note": "",
                  "created_by": "", "photo": "", "photo_x": 50, "photo_y": 35},
     "labels": [],
+    "plan": {"rotation": 34, "trim_white": True},
 }
 
 lock = threading.Lock()
@@ -101,6 +102,7 @@ def load_site():
     site = {**SITE_DEFAULT, **data}
     site["memorial"] = {**SITE_DEFAULT["memorial"], **data.get("memorial", {})}
     site["labels"] = [l for l in data.get("labels", []) if isinstance(l, dict)]
+    site["plan"] = {**SITE_DEFAULT["plan"], **data.get("plan", {})}
 
 
 def save_site():
@@ -123,7 +125,7 @@ def site_payload(full):
     out = {"site_name": site["site_name"],
            "memorial": {"name": m["name"], "birth": m["birth"], "death": m["death"]}}
     if full:
-        out = {**out, "support_contact": site["support_contact"], "labels": site["labels"],
+        out = {**out, "support_contact": site["support_contact"], "labels": site["labels"], "plan": site["plan"],
                "memorial": {**m, "has_photo": bool(photo_path())}}
     return out
 
@@ -553,7 +555,7 @@ def r_position(h, qs, user):
     with lock:
         for d in devices:
             if d["ip"] == b.get("ip"):
-                d["x"], d["y"] = round(max(0, min(90, x)), 1), round(max(0, min(90, y)), 1)
+                d["x"], d["y"] = round(max(0, min(200, x)), 1), round(max(0, min(200, y)), 1)
                 save_devices()
                 return h.json(200, {"ok": True})
     h.json(404, {"error": "Cihaz bulunamadı"})
@@ -775,9 +777,19 @@ def r_site(h, qs, user):
                 x, y = float(l.get("x", 45)), float(l.get("y", 45))
             except (TypeError, ValueError):
                 raise ValueError("Etiket konumu geçersiz")
-            labels.append({"text": str(l["text"]).strip()[:30], "x": round(max(0, min(90, x)), 1), "y": round(max(0, min(90, y)), 1)})
+            labels.append({"text": str(l["text"]).strip()[:30], "x": round(max(0, min(200, x)), 1), "y": round(max(0, min(200, y)), 1)})
         site["labels"] = labels
         changed.append("harita etiketleri")
+    if isinstance(b.get("plan"), dict):
+        p = b["plan"]
+        if "rotation" in p:
+            try:
+                site["plan"]["rotation"] = round(max(-180.0, min(180.0, float(p["rotation"]))), 1)
+            except (TypeError, ValueError):
+                raise ValueError("Döndürme açısı geçersiz")
+        if "trim_white" in p:
+            site["plan"]["trim_white"] = bool(p["trim_white"])
+        changed.append("harita görseli")
     save_site()
     if changed:
         audit(user, "Ayarlar", ", ".join(changed))
