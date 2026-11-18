@@ -84,10 +84,17 @@ The menu on the left is grouped into four sections.
 | Page | What you get |
 |---|---|
 | **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. Mini map, list of devices that need attention, recent drops, shortcuts for "something happened". |
-| **Canlı izleme** | A tile per camera with the NVR's latest picture, refreshed every few seconds. Click a tile to enlarge it (refreshes about every 1.5 s) and jump to its recordings. |
+| **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 1.4 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (refreshes about every 1.5 s; Esc closes) and jump to its recordings. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
-| **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Pins are green (working), amber (dropped today) or red (down). Admins can drag pins and labels into place and adjust the image rotation. |
-| **Ağ cihazları** | Router, switch, NVR and Wi-Fi devices with links to their own web pages, and a plain-language description of the network. |
+| **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Each device has an icon for its type (camera, access point, router, switch, NVR, repeater; cameras round, network devices square) coloured by status: green (working), amber (dropped today), red (down), grey (unknown). Clicking a device opens a small card with name, type, IP, channel, status and buttons for live view and details. Admins can drag pins and labels into place and adjust the image rotation. |
+| **Ağ cihazları** | Router, switch, NVR and Wi-Fi devices with links to their own web pages, and a plain-language description of the network. Admins also get the **device inventory**: add, edit or remove cameras and devices (name, IP, MAC, type, NVR channel) without editing `devices.json` by hand, with the step-by-step order for adding a new device (MAC → router reservation below .150 → NVR channel → panel → map). It refuses duplicate IPs and channels and warns about addresses inside the DHCP pool. Only the panel's list changes; the device itself is never touched. |
+| **Daireler ve kişiler** | Aidat status per flat with a one-click **Hatırlat** (opens WhatsApp, or e-mail, for the tenant if there is one, otherwise the owner, with the overdue amount, months and IBAN filled in), filters (overdue, has debt, no debt), checkboxes and the same bulk actions as the Aidat page. Flats (blok, kapı, daire, arsa payı), people (malik, kiracı, hane üyesi; phone, e-mail, move-in/out, emergency contact) and vehicles (plate, model, colour, parking spot, sticker). Search by name, phone, plate or flat. Import from **Excel (.xlsx) or CSV** with a preview first; re-importing updates instead of duplicating. Export to CSV. |
+| **Ziyaretçi ve araç** | Plate lookup (partial plates work, spaces and case don't matter) showing the flat, residents and phones, plus the visitor log with check-in/out. |
+| **Mesaj gönder** | Pick recipients (all, owners, tenants, flats with overdue aidat, flats with any debt, the flats selected on another page; per blok) and a template (free text, aidat reminder, second aidat notice, monthly aidat notice, payment thank-you, "confirm your details and vehicles", ordinary general assembly invitation). Placeholders such as {bakiye}, {geciken}, {geciken_donem}, {iban} are filled per flat. The panel fills each person's name, flat, phone and vehicles, then gives a **WhatsApp** button per person (opens the chat with the text; you press send), e-mail (per person or BCC in batches) and **printable letters** with a signature list for legal notice (imza karşılığı, at least 15 days before the meeting). |
+| **Talepler** | Requests and corrections sent by residents; answer and close them. |
+| **Aidat ve tahsilat** | Monthly aidat per flat (equal, or a monthly total split by arsa payı), created for a month with one click (never twice). Payments (havale, nakit, kart) close the oldest debt first. Shows this month's charges and collections, total receivable, overdue amounts and flats, the oldest due date, and an estimated late fee (KMK 20, up to 5% a month, only calculated, not charged). Full account statement per flat; wrong entries can be deleted (logged). Bulk actions on selected flats: prepare reminders, write a message, mark paid in full, add an extra charge (repair share, late fee). Settings: amount, due day, late-fee rate, the site's bank account (IBAN). CSV export. |
+| **Sakin kamera erişimi** | Master switch (off by default) for residents watching cameras. Default access per column: "Tüm sakinler" (shared areas such as the main gate) and per blok (that blok's entrance, elevator, parking); "Kamera adına göre öner" ticks cameras whose name contains the blok. A flat can get its own list in Daireler ve kişiler → Düzenle. Residents get the live picture only; the first view of each camera per day is logged. |
+| **Dairem** (residents) | The resident's own flat, household and vehicles, a form to write to the management, their requests with answers, and password change. |
 
 ### Kayıt ve kanıt (recordings and evidence)
 
@@ -167,8 +174,12 @@ Everyone logs in with their **own username and password**. Their name appears in
 
 | Role | Can do |
 |---|---|
-| **Görevli** (watchman, security staff) | Live view, cameras, map, recordings search and download, logs, exports, maintenance notes, change own password |
-| **Yönetici** (admin) | Everything above, plus NVR connection, users, memorial section, map editing, labels, site settings, and the download log |
+| **Güvenlik** (watchman, security staff; was "Görevli") | Live view, cameras, map, recordings search and download, logs, exports, maintenance notes, residents' names, phones and vehicles (read only), plate lookup, visitor log, change own password |
+| **Yönetici** (site manager) | Everything above, plus residents registry (add, edit, Excel/CSV import, export), messages to residents, resident requests, device inventory, NVR connection, users, memorial section, map editing, site settings, and the download log |
+| **Site sakini** (resident) | Only their own flat: household, vehicles, **aidat balance and history**, their requests to the management, own password. If the manager allows it, the **live picture** of selected cameras (Canlı izleme and Site haritası show only those). **Never recordings, logs, other devices or other residents.** The account is linked to one flat. |
+
+- KVKK: Güvenlik sees only what the job needs (no e-mail, arsa payı or notes; people with a move-out date are hidden). Every plate lookup, registry export and import is written to the download/action log with who and when.
+- In demo mode a selector at the bottom of the menu lets you view the panel as each role.
 
 - Usernames: lowercase letters, digits, dot, dash (e.g. `ahmet.bekci`). Passwords: at least 8 characters.
 - Resetting someone's password logs them out everywhere. You can't delete your own account or remove the last admin.
@@ -201,7 +212,7 @@ Everyone logs in with their **own username and password**. Their name appears in
 - The browser **rotates** the image (34° by default, so B and C blok sit at the top), **removes a white background** automatically and crops to the site, so the picture fills the map. Both settings are stored in `site.json` → `plan`.
 - **Site haritası → Haritayı düzenle** (admins): a rotation slider with ±1° buttons and a "remove white background" switch appear; drag cameras, network devices and labels to their real positions. Everything saves automatically: devices to `devices.json`, labels and rotation to `site.json`.
 - **Ayarlar → Site ve harita**: rename, add or remove labels (A blok, B blok, C blok, Bahçe, Havuz…).
-- **Cihaz adları** shows or hides device names; **Tam ekran** makes the map fill the screen.
+- **Cihaz adları** shows or hides device names as readable labels on a solid background, placed so they don't cover each other or other devices where possible; **Tam ekran** makes the map fill the screen.
 
 ## Editing the memorial section
 
@@ -297,7 +308,7 @@ Camera recordings and logs are personal data of residents and visitors.
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
-- **Next for the panel:** 8 / 16 / 32 view grid on Canlı izleme, device-type icons on the map, readable labels when a device is clicked.
+- **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons on the map, readable labels and a device card on the map.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
 - **Roadmap (brainstormed):** roles for site yöneticisi, güvenlik and site sakini; flats, residents and vehicles registry with plate lookup and visitor log; "send to residents" (WhatsApp, e-mail, printable letters); a yearly calendar of the manager's legal duties (Kat Mülkiyeti Kanunu 35–39); meetings and decision book; dues; later an online resident portal kept separate from the camera system. Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
 
