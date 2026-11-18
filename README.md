@@ -83,7 +83,7 @@ The menu on the left is grouped into four sections.
 
 | Page | What you get |
 |---|---|
-| **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. Mini map, list of devices that need attention, recent drops, shortcuts for "something happened". |
+| **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. A large site map (click a device for its card: status, ping, drops, live view, details), devices that need attention, recent drops, shortcuts for "something happened". |
 | **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 1.4 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (refreshes about every 1.5 s; Esc closes) and jump to its recordings. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
 | **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Each device has an icon for its type (camera, access point, router, switch, NVR, repeater; cameras round, network devices square) coloured by status: green (working), amber (dropped today), red (down), grey (unknown). Clicking a device opens a small card with name, type, IP, channel, status and buttons for live view and details. Admins can drag pins and labels into place and adjust the image rotation. |
@@ -278,9 +278,12 @@ Results go to `results/` as CSV. The step-by-step site-day checklist is in [TEST
 
 ## Security and privacy (KVKK)
 
-Camera recordings and logs are personal data of residents and visitors.
+Camera recordings, logs, the residents registry (names, phones, e-mails, vehicles), the visitor log and aidat records are personal data of residents and visitors.
 
 - Runs **only inside the site network**. No cloud, no internet connection needed.
+- **Role-based access**, enforced by the server and not only by the menu: Güvenlik sees residents' names, phones and vehicles but not e-mails, arsa payı, notes, aidat or people who have moved out; residents see only their own flat.
+- **Residents and cameras:** off by default. When the manager turns it on, a resident gets the **live picture** of the cameras allowed for their flat only, never recordings, logs, other devices or IP addresses. Do not open cameras that show inside a flat or another flat's door or windows; inform residents in writing (aydınlatma metni), ideally after a kurul decision.
+- **Logged with who and when:** every recording download and export, registry import and export, plate lookup, device change, aidat entry and deletion, message preparation, and each resident's first view of a camera per day.
 - Personal accounts; passwords stored as salted PBKDF2 hashes; sessions expire after 12 hours of inactivity.
 - **Every download and export is logged** with the person's name and time.
 - The **NVR password is never written to disk**.
@@ -306,11 +309,12 @@ Camera recordings and logs are personal data of residents and visitors.
 ## Project status
 
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
+- **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons, readable labels and a device card on the maps, collapsible menu, device inventory editor; roles Yönetici / Güvenlik / Site sakini; flats, people and vehicles registry with Excel/CSV import, plate lookup and visitor log; messages (WhatsApp, e-mail, printable letters with signature list); resident requests; aidat and collections with reminders and bulk actions; resident camera access.
+- **Tests:** `tests/api_smoke.py` runs 58 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access) against a demo server.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
-- **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons on the map, readable labels and a device card on the map.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
-- **Roadmap (brainstormed):** roles for site yöneticisi, güvenlik and site sakini; flats, residents and vehicles registry with plate lookup and visitor log; "send to residents" (WhatsApp, e-mail, printable letters); a yearly calendar of the manager's legal duties (Kat Mülkiyeti Kanunu 35–39); meetings and decision book; dues; later an online resident portal kept separate from the camera system. Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
+- **Next on the roadmap:** a yearly calendar of the manager's legal duties (Kat Mülkiyeti Kanunu 35–39) with contracts, insurance and documents; meetings and decision book; income and expenses beyond aidat; later an online resident portal kept separate from the camera system (VPN for managers and security, a portal without any camera features for residents). Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
 
 ## Documents
 
@@ -336,6 +340,7 @@ Camera recordings and logs are personal data of residents and visitors.
 | `start-panel.bat` | Start script for the always-on PC |
 | `INSTALL.md`, `TEST-PLAN.md`, `ON-SITE-CHECKLIST.md`, `NEXT-PROMPT.md` | Documents (see above) |
 | `docs/` | README images, the earlier Google aerial view |
+| `tests/api_smoke.py` | Automated checks against a demo server: `python adalya_panel.py --demo --no-browser --port 8091`, then `python tests/api_smoke.py http://127.0.0.1:8091`. Run the demo from a copy of the folder: demo mode writes device and map changes to `devices.json`. |
 | `LICENSE` | All rights reserved |
 
 ## License
