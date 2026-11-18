@@ -383,7 +383,18 @@ html[data-theme="dark"] {
 .ann h2 { font-size: 15.5px; }
 .ann .ann-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .ann .ann-body { white-space: pre-wrap; font-size: 14px; }
-.ann .receipt { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+/* command palette */
+.palette { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; background: rgba(10, 12, 14, .38); }
+.palette.on { display: flex; }
+.palette-box { width: min(640px, 92vw); background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .55); overflow: hidden; }
+.palette-box input { width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 15px 17px; font-size: 16px; background: var(--card); }
+.palette-res { max-height: 52vh; overflow: auto; }
+.pal-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 17px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.pal-item:last-child { border-bottom: 0; }
+.pal-item:hover, .pal-item.sel { background: var(--soft); }
+.pal-item b { font-size: 14px; font-weight: 600; }
+.pal-item .t { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pal-empty { padding: 18px; color: var(--muted); text-align: center; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -434,6 +445,67 @@ async function api(path, opts) {
 }
 const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
 
+function readImage(input) {
+  return new Promise((resolve, reject) => {
+    const f = input.files && input.files[0];
+    if (!f) return resolve(null);
+    if (f.size > 5000000) return reject(new Error("Fotoğraf en fazla 5 MB olabilir."));
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return reject(new Error("Fotoğraf JPG, PNG veya WEBP olmalı."));
+    const rd = new FileReader();
+    rd.onload = () => resolve(rd.result);
+    rd.onerror = () => reject(new Error("Fotoğraf okunamadı."));
+    rd.readAsDataURL(f);
+  });
+}
+
+/* global search palette (Ctrl/Cmd+K) — staff and admin only */
+let palTimer = null;
+function ensurePalette() {
+  if ($("#palette")) return;
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="palette" id="palette" role="dialog" aria-label="Arama"><div class="palette-box">
+      <input id="palQ" placeholder="Ara: sakin, plaka, daire, belge…" autocomplete="off" spellcheck="false">
+      <div class="palette-res" id="palRes"><div class="pal-empty">En az 2 karakter yazın.</div></div>
+    </div></div>`);
+  $("#palette").addEventListener("click", e => { if (e.target.id === "palette") closePalette(); });
+  $("#palQ").addEventListener("input", () => {
+    clearTimeout(palTimer);
+    const q = $("#palQ").value.trim();
+    if (q.length < 2) { $("#palRes").innerHTML = '<div class="pal-empty">En az 2 karakter yazın.</div>'; return; }
+    palTimer = setTimeout(() => palSearch(q), 220);
+  });
+}
+function openPalette() {
+  if (!S.me || isResident()) return;
+  ensurePalette();
+  $("#palette").classList.add("on");
+  $("#palQ").value = "";
+  $("#palRes").innerHTML = '<div class="pal-empty">En az 2 karakter yazın.</div>';
+  setTimeout(() => $("#palQ").focus(), 20);
+}
+function closePalette() { $("#palette")?.classList.remove("on"); }
+async function palSearch(q) {
+  try {
+    const r = await api("/api/search?q=" + encodeURIComponent(q));
+    if (!$("#palRes")) return;
+    $("#palRes").innerHTML = r.results.length ? r.results.map(x =>
+      `<div class="pal-item" data-href="${esc(x.href)}"><span><b>${esc(x.title)}</b><div class="t">${esc(x.sub)}</div></span><span class="t">${esc(x.type)}</span></div>`).join("")
+      : '<div class="pal-empty">Sonuç yok.</div>';
+    $$("#palRes .pal-item").forEach(el => el.onclick = () => {
+      const href = el.dataset.href;
+      closePalette();
+      if (href.startsWith("/")) window.open(href, "_blank", "noopener");
+      else location.hash = href;
+    });
+  } catch (e) { $("#palRes").innerHTML = `<div class="pal-empty">${esc(e.message)}</div>`; }
+}
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    $("#palette")?.classList.contains("on") ? closePalette() : openPalette();
+  } else if (e.key === "Escape") closePalette();
+});
+
 function level(d) { if (d.up === null) return "unk"; if (d.up === false) return "bad"; return d.drops_today > 0 ? "warn" : "ok"; }
 function statusText(d) {
   if (d.up === null) return "Bekleniyor";
@@ -455,7 +527,7 @@ const NAV = [
   ["Sakinler", false, [["sakinler", "Daireler ve kişiler", "S"], ["aidat", "Aidat ve tahsilat", "A"], ["ziyaret", "Ziyaretçi ve araç", "S"], ["mesaj", "Mesaj gönder", "A"], ["talepler", "Talepler", "A"], ["kamerayetki", "Sakin kamera erişimi", "A"]]],
   ["İletişim", false, [["duyurular", "Duyurular", "SAR"]]],
   ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
-  ["Teknik", false, [["ag", "Ağ cihazları", "S"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
+  ["Teknik", false, [["ag", "Ağ cihazları", "S"], ["yedekler", "Yedekler", "A"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
   ["Hakkında", false, [["proje", "Proje", "SR"]]],
 ];
 const ROLE_TR = { admin: "Yönetici", staff: "Güvenlik", resident: "Site sakini" };
@@ -499,6 +571,7 @@ function shell() {
       <div class="sidefoot">
         <div>${esc(S.me.user.name)} · ${ROLE_TR[role()] || role()}${S.me.demo ? ' · <span class="badge">Demo</span>' : ""}</div>
         ${S.me.demo ? `<label for="demoRole" style="margin-top:8px">Demo: rol olarak görüntüle</label><select id="demoRole" style="width:100%;font-size:13px;padding:4px 6px">${Object.entries(ROLE_TR).map(([k, v]) => `<option value="${k}" ${k === role() ? "selected" : ""}>${v}</option>`).join("")}</select>` : '<a href="#" id="logout">Çıkış yap</a>'}
+        ${isResident() ? "" : `<button class="theme-toggle" id="searchBtn" aria-label="Ara"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.6-3.6"/></svg><span>Ara (⌘K)</span></button>`}
         <button class="theme-toggle" id="themeBtn" aria-label="Tema değiştir">${themeEffective() === "dark"
           ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Açık tema</span>'
           : '<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><span>Koyu tema</span>'}</button>
@@ -516,6 +589,8 @@ function shell() {
   if (dr) dr.onchange = () => { document.cookie = "adalya_demo_role=" + dr.value + "; path=/; SameSite=Strict"; history.replaceState(null, "", "#/"); boot(); };
   const tb = $("#themeBtn");
   if (tb) tb.onclick = () => { themeSet(themeEffective() === "dark" ? "light" : "dark"); shell(); render(); };
+  const sb = $("#searchBtn");
+  if (sb) sb.onclick = openPalette;
   updateAnnBadge();
   const lo = $("#logout");
   if (lo) lo.onclick = async e => { e.preventDefault(); await post("/api/logout"); S.me.user = null; boot(); };
@@ -2064,20 +2139,41 @@ PAGES.mesaj = {
 };
 
 PAGES.talepler = {
+  data: [],
+  status: "acik",
+  cat: "",
   render(el) {
-    el.innerHTML = head("Talepler", "Site sakinlerinin düzeltme ve istekleri") + '<div class="card"><div id="tqList"><div class="empty">Yükleniyor…</div></div></div>';
+    el.innerHTML = head("Talepler", "Site sakinlerinin istek ve arızaları") + `
+      <div class="card">
+        <div class="form" style="margin-bottom:12px">
+          <div><label for="tqSt">Durum</label><select id="tqSt"><option value="acik">Açık</option><option value="">Tümü</option><option value="kapali">Kapalı</option></select></div>
+          <div><label for="tqCat">Konu</label><select id="tqCat"><option value="">Tümü</option>${Object.entries(REQ_CAT_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+        </div>
+        <div id="tqList"><div class="empty">Yükleniyor…</div></div>
+      </div>`;
+    $("#tqSt").value = this.status;
+    $("#tqSt").onchange = () => { this.status = $("#tqSt").value; this.draw(); };
+    $("#tqCat").onchange = () => { this.cat = $("#tqCat").value; this.draw(); };
     this.load();
   },
   async load() {
-    try {
-      const r = await api("/api/requests");
-      $("#tqList").innerHTML = r.requests.length ? r.requests.map(q => `<div class="li" style="display:block">
-        <div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(q.flat || "–")} · ${esc(q.user)}</b><span class="t">${dmhm(q.ts)} ${q.status === "acik" ? '<span class="pill warn">Açık</span>' : '<span class="pill ok">Kapandı</span>'}</span></div>
-        <div style="white-space:pre-wrap;margin:4px 0">${esc(q.text)}</div>
-        ${q.status === "acik" ? `<div class="form"><div style="flex:1;min-width:220px"><label for="tr${q.id}">Yanıt (sakin görür)</label><input id="tr${q.id}" placeholder="Plakanız güncellendi."></div><button data-close="${q.id}">Yanıtla ve kapat</button></div>`
-          : `<div class="hint">${q.reply ? "Yanıt: " + esc(q.reply) + " · " : ""}${esc(q.closed_by || "")} · ${q.closed_at ? dmhm(q.closed_at) : ""}</div>`}</div>`).join("") : '<div class="empty">Talep yok.</div>';
-      $$("[data-close]").forEach(b => b.onclick = async () => { await post("/api/requests/close", { id: +b.dataset.close, reply: $("#tr" + b.dataset.close).value }); this.load(); });
-    } catch (e) { $("#tqList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+    try { const r = await api("/api/requests"); this.data = r.requests; this.draw(); }
+    catch (e) { $("#tqList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  },
+  draw() {
+    const list = this.data.filter(q => (!this.status || q.status === this.status) && (!this.cat || q.category === this.cat));
+    $("#tqList").innerHTML = list.length ? list.map(q => `<div class="li" style="display:block">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>${esc(q.flat || "–")} · ${esc(q.user)}</b>
+        <span class="t">${dmhm(q.ts)} ${q.status === "acik" ? '<span class="pill warn">Açık</span>' : '<span class="pill ok">Kapandı</span>'} <span class="pill unk">${esc(REQ_CAT_TR[q.category] || "Diğer")}</span></span></div>
+      <div style="white-space:pre-wrap;margin:4px 0">${esc(q.text)}</div>
+      ${q.has_photo ? `<div style="margin:6px 0"><img src="/api/requests/photo?id=${q.id}" alt="Talep fotoğrafı" style="max-width:240px;border-radius:8px;border:1px solid var(--line);cursor:zoom-in" onclick="window.open(this.src,'_blank')"></div>` : ""}
+      ${q.status === "acik" ? `<div class="form"><div style="flex:1;min-width:220px"><label for="tr${q.id}">Yanıt (sakin görür)</label><input id="tr${q.id}" placeholder="Plakanız güncellendi."></div><button data-close="${q.id}">Yanıtla ve kapat</button></div>`
+        : `<div class="hint">${q.reply ? "Yanıt: " + esc(q.reply) + " · " : ""}${esc(q.closed_by || "")} · ${q.closed_at ? dmhm(q.closed_at) : ""}</div>`}</div>`).join("")
+      : '<div class="empty">Bu filtrede talep yok.</div>';
+    $$("[data-close]").forEach(b => b.onclick = async () => {
+      try { await post("/api/requests/close", { id: +b.dataset.close, reply: $("#tr" + b.dataset.close).value }); this.load(); }
+      catch (e) { alert(e.message); }
+    });
   },
 };
 
@@ -2154,8 +2250,12 @@ PAGES.dairem = {
 
       <div class="card"><div class="card-h"><h2>Kargolarım</h2><span class="hint">Güvenlik kaydeder</span></div><div id="pkgList"><div class="empty">Yükleniyor…</div></div></div>
 
-      <div class="card" id="reqCard"><div class="card-h"><h2>Yönetime yazın</h2><span class="hint">Bilgi düzeltme, araç değişikliği, istek</span></div>
-        <textarea id="myReq" placeholder="Yeni aracım: 07 ABC 123, beyaz Fiat Egea"></textarea>
+      <div class="card" id="reqCard"><div class="card-h"><h2>Yönetime yazın</h2><span class="hint">Arıza, temizlik, gürültü, araç…</span></div>
+        <div class="form" style="margin-bottom:8px">
+          <div><label for="myCat">Konu</label><select id="myCat">${Object.entries(REQ_CAT_TR).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+          <div><label for="myPhoto">Fotoğraf (isteğe bağlı)</label><input id="myPhoto" type="file" accept="image/jpeg,image/png,image/webp"></div>
+        </div>
+        <textarea id="myReq" placeholder="Asansör 3. katta takılı kaldı, kapı açılmıyor."></textarea>
         <div style="margin-top:8px"><button class="primary" id="myReqGo">Gönder</button></div><div class="err" id="myErr"></div><div class="okmsg" id="myOk"></div>
         ${r.requests.length ? `<h3>Talepleriniz</h3><div class="list">${r.requests.map(q => `<div class="li" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><span style="white-space:pre-wrap">${esc(q.text)}</span><span class="t">${dmhm(q.ts)} ${q.status === "acik" ? '<span class="pill warn">Açık</span>' : '<span class="pill ok">Yanıtlandı</span>'}</span></div>${q.reply ? `<div class="hint">Yönetim: ${esc(q.reply)}</div>` : ""}</div>`).join("")}</div>` : ""}</div>
 
@@ -2170,7 +2270,11 @@ PAGES.dairem = {
     $$("[data-scroll]").forEach(b => b.onclick = () => document.getElementById(b.dataset.scroll)?.scrollIntoView({ behavior: "smooth", block: "start" }));
     $("#myReqGo").onclick = async () => {
       $("#myErr").textContent = ""; $("#myOk").textContent = "";
-      try { await post("/api/my/request", { text: $("#myReq").value }); this.load(); } catch (e) { $("#myErr").textContent = e.message; }
+      try {
+        const photo = await readImage($("#myPhoto"));
+        await post("/api/my/request", { text: $("#myReq").value, category: $("#myCat").value, photo });
+        this.load();
+      } catch (e) { $("#myErr").textContent = e.message; }
     };
     if ($("#pGo")) $("#pGo").onclick = async () => {
       $("#pErr").textContent = ""; $("#pOk").textContent = "";
@@ -2221,6 +2325,7 @@ PAGES.dairem = {
 
 const TASK_KIND_TR = { gorev: "Görev", toplanti: "Toplantı", bakim: "Bakım", hukuki: "Hukuki", diger: "Diğer" };
 const ANN_KIND_TR = { duyuru: "Duyuru", ariza: "Arıza / kesinti", toplanti: "Toplantı", guvenlik: "Güvenlik" };
+const REQ_CAT_TR = { bakim: "Bakım / onarım", ariza: "Arıza", temizlik: "Temizlik", gurultu: "Gürültü", arac: "Araç / otopark", diger: "Diğer" };
 const CONTRACT_KIND_TR = { sigorta: "Sigorta poliçesi", asansor: "Asansör bakım", temizlik: "Temizlik", guvenlik: "Güvenlik", peyzaj: "Peyzaj / bahçe", bakim: "Genel bakım", diger: "Diğer" };
 const DOC_KIND_TR = { sozlesme: "Sözleşme", police: "Poliçe", karar: "Karar defteri", plan: "Plan / proje", makbuz: "Makbuz", diger: "Diğer" };
 const CONTRACT_STATUS = { valid: ["ok", "Geçerli"], soon: ["warn", "Bitiyor"], expired: ["bad", "Süresi geçti"], none: ["unk", "Tarih yok"] };
@@ -2520,6 +2625,67 @@ PAGES.duyurular = {
   },
 };
 
+PAGES.yedekler = {
+  render(el) {
+    el.innerHTML = head("Yedekler", "Verinizin günlük kopyası ve geri yükleme") + `
+      <div class="card"><div class="card-h"><h2>Otomatik yedek</h2></div>
+        <div class="form">
+          <div><label for="bkAuto">Durum</label><select id="bkAuto"><option value="1">Açık</option><option value="0">Kapalı</option></select></div>
+          <div><label for="bkHour">Saat</label><input id="bkHour" type="number" min="0" max="23" style="width:90px"></div>
+          <div><label for="bkKeep">Saklanacak</label><input id="bkKeep" type="number" min="3" max="60" style="width:110px"></div>
+          <button id="bkSave">Kaydet</button>
+          <button class="primary" id="bkNow">Şimdi yedek al</button>
+        </div>
+        <div class="hint" id="bkInfo" style="margin-top:8px"></div>
+        <div class="err" id="bkErr"></div><div class="okmsg" id="bkOk"></div>
+      </div>
+      <div class="card"><div class="card-h"><h2>Yedek dosyaları</h2><span class="hint">data/yedekler</span></div><div id="bkList"><div class="empty">Yükleniyor…</div></div></div>
+      <div class="info">Geri yükleme önce mevcut durumun güvenlik yedeğini alır, sonra seçtiğiniz yedeği uygular. İşlemden sonra sayfayı yenileyin. Yedeği panel bilgisayarından başka bir diske de kopyalayın.</div>`;
+    $("#bkSave").onclick = async () => {
+      $("#bkErr").textContent = ""; $("#bkOk").textContent = "";
+      try {
+        await post("/api/backups/settings", { auto: $("#bkAuto").value === "1", hour: +$("#bkHour").value, keep: +$("#bkKeep").value });
+        $("#bkOk").textContent = "Ayarlar kaydedildi.";
+        this.load();
+      } catch (e) { $("#bkErr").textContent = e.message; }
+    };
+    $("#bkNow").onclick = async () => {
+      $("#bkErr").textContent = ""; $("#bkOk").textContent = "";
+      try {
+        const r = await post("/api/backups", {});
+        $("#bkOk").textContent = "Yedek alındı: " + r.name;
+        this.load();
+      } catch (e) { $("#bkErr").textContent = e.message; }
+    };
+    this.load();
+  },
+  async load() {
+    let r;
+    try { r = await api("/api/backups"); } catch (e) { $("#bkList").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    $("#bkAuto").value = r.settings.auto ? "1" : "0";
+    $("#bkHour").value = r.settings.hour;
+    $("#bkKeep").value = r.settings.keep;
+    $("#bkInfo").textContent = r.settings.auto
+      ? `Her gün saat ${String(r.settings.hour).padStart(2, "0")}:00 civarında otomatik yedek alınır, son ${r.settings.keep} yedek saklanır.`
+      : "Otomatik yedek kapalı. Elle yedek alabilirsiniz.";
+    $("#bkList").innerHTML = r.backups.length ? `<div class="tablewrap"><table><thead><tr><th>Yedek</th><th>Tarih</th><th style="text-align:right">Boyut</th><th></th></tr></thead><tbody>
+      ${r.backups.map(b => `<tr><td class="mono">${esc(b.name)}</td><td>${dmhm(b.ts)}</td><td style="text-align:right">${size(b.size)}</td>
+        <td style="white-space:nowrap"><a class="btn sm" href="/api/backups/download?name=${encodeURIComponent(b.name)}">İndir</a>
+        <button class="btn sm" data-restore="${esc(b.name)}">Geri yükle</button></td></tr>`).join("")}</tbody></table></div>`
+      : '<div class="empty">Henüz yedek yok. “Şimdi yedek al” ile başlayın.</div>';
+    $$("[data-restore]").forEach(b => b.onclick = async () => {
+      const name = b.dataset.restore;
+      const c = prompt(`"${name}" geri yüklenecek.\nOnay için GERI YUKLE yazın:`);
+      if (!c) return;
+      try {
+        await post("/api/backups/restore", { name, confirm: c });
+        alert("Yedek geri yüklendi. Sayfa yenilenecek.");
+        location.reload();
+      } catch (e) { alert(e.message); }
+    });
+  },
+};
+
 PAGES.bakim = {
   render(el) {
     el.innerHTML = head("Bakım günlüğü", "Sahada yapılan her iş, kim ve ne zaman") + `
@@ -2556,15 +2722,31 @@ PAGES.disa = {
         <div class="card"><h2>NVR logları (CSV)</h2><p>${c ? "Son 7 günün NVR logları." : "NVR bağlı değil."}</p><div>${c ? `<a class="btn" target="_blank" rel="noopener" href="/api/nvr/logs.csv?start=${encodeURIComponent(wk + " 00:00:00")}&end=${encodeURIComponent(today + " 23:59:59")}">CSV indir</a>` : '<a class="btn" href="#/ayarlar">Bağlan</a>'}</div></div>
       </div>
       <div class="warnbox">Kayıtlar ve loglar kişisel veri içerir (KVKK). Yalnızca yetkili kişilerle paylaşın, işiniz bitince silin. Her indirme aşağıdaki kayda yazılır.</div>
-      <div class="card"><h2>İndirme ve işlem kaydı</h2><div id="aud">${isAdmin() ? '<div class="empty">Yükleniyor…</div>' : '<div class="hint">Bu kaydı yalnızca yönetici görebilir.</div>'}</div></div>`;
+      <div class="card"><div class="card-h"><h2>İndirme ve işlem kaydı</h2><a id="auCsv" href="/api/audit.csv" target="_blank" rel="noopener">CSV indir</a></div>
+        ${isAdmin() ? `<div class="form" style="margin-bottom:10px">
+          <div><label for="auFrom">Başlangıç</label><input id="auFrom" type="date"></div>
+          <div><label for="auTo">Bitiş</label><input id="auTo" type="date"></div>
+          <div><label for="auUser">Kişi</label><input id="auUser" placeholder="ad" style="width:120px"></div>
+          <div><label for="auAct">İşlem</label><input id="auAct" placeholder="Duyuru" style="width:130px"></div>
+          <button id="auGo">Filtrele</button>
+        </div>` : ""}
+        <div id="aud">${isAdmin() ? '<div class="empty">Yükleniyor…</div>' : '<div class="hint">Bu kaydı yalnızca yönetici görebilir.</div>'}</div></div>`;
     $("#zDays").onchange = () => { $("#zGo").href = "/api/export.zip?days=" + $("#zDays").value; };
-    if (isAdmin()) this.audit();
+    if (isAdmin()) { $("#auGo").onclick = () => this.audit(); this.audit(); }
   },
   async audit() {
+    const q = new URLSearchParams();
+    [["auFrom", "from"], ["auTo", "to"], ["auUser", "user"], ["auAct", "action"]].forEach(([id, key]) => {
+      const v = ($("#" + id)?.value || "").trim();
+      if (v) q.set(key, v);
+    });
+    const qs = q.toString();
+    $("#auCsv").href = "/api/audit.csv" + (qs ? "?" + qs : "");
     try {
-      const r = await api("/api/audit");
+      const r = await api("/api/audit" + (qs ? "?" + qs : ""));
       $("#aud").innerHTML = r.audit.length ? `<div class="tablewrap"><table><thead><tr><th>Zaman</th><th>Kişi</th><th>Rol</th><th>İşlem</th><th>Ayrıntı</th></tr></thead><tbody>
-        ${r.audit.map(a => `<tr><td>${dmhm(a.ts)}</td><td>${esc(a.user)}</td><td>${ROLE_TR[a.role] || esc(a.role)}</td><td>${esc(a.action)}</td><td class="mono">${esc(a.detail)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Henüz kayıt yok.</div>';
+        ${r.audit.map(a => `<tr><td style="white-space:nowrap">${dmhm(a.ts)}</td><td>${esc(a.user)}</td><td>${ROLE_TR[a.role] || esc(a.role)}</td><td>${esc(a.action)}</td><td class="mono">${esc(a.detail)}</td></tr>`).join("")}</tbody></table></div>`
+        : '<div class="empty">Bu filtrede kayıt yok.</div>';
     } catch (e) { $("#aud").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
 };

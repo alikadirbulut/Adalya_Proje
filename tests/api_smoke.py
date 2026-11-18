@@ -261,11 +261,50 @@ k = next(x for x in pk["packages"] if x["courier"] == "Test kargo")
 check("staff delivers package", call("/api/packages/out", "staff", {"id": k["id"]})[0] == 200)
 check("resident cannot add package", call("/api/packages", "resident", {"flat_id": 1, "courier": "x"})[0] == 403)
 
+# ---------------------------------------------------------------- requests with category and photo, search, backups
+png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+check("resident request with category and photo",
+      call("/api/my/request", "resident", {"text": "Asansör arızası test", "category": "ariza",
+                                           "photo": "data:image/png;base64," + png})[0] == 200)
+c, rq = call("/api/requests")
+q = next((x for x in rq["requests"] if x["text"] == "Asansör arızası test"), None)
+check("request category and photo saved", q and q["category"] == "ariza" and q["has_photo"] is True, q)
+c, img = call(f"/api/requests/photo?id={q['id']}")
+check("request photo served", c == 200 and img[:4] == b"\x89PNG", c)
+check("staff cannot read request photo", call(f"/api/requests/photo?id={q['id']}", "staff")[0] == 403)
+check("request rejects fake photo", call("/api/my/request", "resident", {"text": "x", "photo": "data:image/png;base64,aGk="})[0] == 400)
+
+c, sr = call("/api/search?q=" + urllib.request.quote("Yılmaz"))
+check("search finds people", c == 200 and any(x["type"] == "person" for x in sr["results"]), sr.get("results"))
+c, sv = call("/api/search?q=07")
+check("search finds plates", c == 200 and any(x["type"] == "vehicle" for x in sv["results"]), sv.get("results"))
+check("resident cannot use global search", call("/api/search?q=" + urllib.request.quote("Yılmaz"), "resident")[0] == 403)
+
+c, au = call("/api/audit?action=Duyuru")
+check("audit filters by action", c == 200 and len(au["audit"]) > 0 and all(a["action"] == "Duyuru" for a in au["audit"]), len(au.get("audit", [])))
+c, csvd = call("/api/audit.csv?action=Duyuru")
+check("audit csv downloads", c == 200 and b"Zaman" in csvd, c)
+check("staff cannot download audit csv", call("/api/audit.csv", "staff")[0] == 403)
+
+c, bk = call("/api/backups", "admin", {})
+check("backup created", c == 200 and bk["name"].endswith(".zip"), bk)
+c, bl = call("/api/backups")
+check("backup listed", any(b["name"] == bk["name"] for b in bl["backups"]))
+c, zdata = call("/api/backups/download?name=" + urllib.request.quote(bk["name"]))
+check("backup downloads as zip", c == 200 and zdata[:2] == b"PK", c)
+check("backup settings saved", call("/api/backups/settings", "admin", {"auto": False, "hour": 4, "keep": 5})[0] == 200)
+check("restore needs confirmation", call("/api/backups/restore", "admin", {"name": bk["name"], "confirm": "yanlis"})[0] == 400)
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}
 check("audit logs plate lookups, imports, devices", {"Plaka sorgusu", "Sakin listesi içe aktarıldı", "Cihaz eklendi", "Cihaz silindi"} <= acts, acts)
 check("audit logs calendar, contracts, documents", {"Takvim", "Sözleşme", "Belge"} <= acts, acts)
 check("audit logs announcements, passes, packages", {"Duyuru", "Ziyaretçi izni", "Kargo"} <= acts, acts)
+
+# restoring the backup taken above must leave a working panel
+c, rr = call("/api/backups/restore", "admin", {"name": bk["name"], "confirm": "GERI YUKLE"})
+check("backup restore succeeds", c == 200, rr)
+check("panel still responds after restore", call("/api/status", "admin")[0] == 200)
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)

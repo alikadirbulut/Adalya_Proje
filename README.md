@@ -78,7 +78,7 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 
 ## Features, page by page
 
-The menu on the left is grouped into eight sections: Sitem (residents only), İzleme, Kayıt ve kanıt, Sakinler, İletişim, Yönetim, Teknik and Hakkında. The active section header is highlighted. A light/dark switch sits at the bottom of the menu (it follows the system until you choose). Residents get four large tabs at the bottom on a phone.
+The menu on the left is grouped into eight sections: Sitem (residents only), İzleme, Kayıt ve kanıt, Sakinler, İletişim, Yönetim, Teknik and Hakkında. The active section header is highlighted. A light/dark switch sits at the bottom of the menu (it follows the system until you choose), and **Ara (⌘K / Ctrl+K)** opens a quick search over residents, phones, plates, flats, documents, contracts and announcements. Residents get four large tabs at the bottom on a phone.
 
 ### İzleme (monitoring)
 
@@ -93,7 +93,7 @@ The menu on the left is grouped into eight sections: Sitem (residents only), İz
 | **Daireler ve kişiler** | Aidat status per flat with a one-click **Hatırlat** (opens WhatsApp, or e-mail, for the tenant if there is one, otherwise the owner, with the overdue amount, months and IBAN filled in), filters (overdue, has debt, no debt), checkboxes and the same bulk actions as the Aidat page. Flats (blok, kapı, daire, arsa payı), people (malik, kiracı, hane üyesi; phone, e-mail, move-in/out, emergency contact) and vehicles (plate, model, colour, parking spot, sticker). Search by name, phone, plate or flat. Import from **Excel (.xlsx) or CSV** with a preview first; re-importing updates instead of duplicating. Export to CSV. |
 | **Ziyaretçi ve araç** | Plate lookup (partial plates work, spaces and case don't matter) showing the flat, residents and phones, plus the visitor log with check-in/out. |
 | **Mesaj gönder** | Pick recipients (all, owners, tenants, flats with overdue aidat, flats with any debt, the flats selected on another page; per blok) and a template (free text, aidat reminder, second aidat notice, monthly aidat notice, payment thank-you, "confirm your details and vehicles", ordinary general assembly invitation). Placeholders such as {bakiye}, {geciken}, {geciken_donem}, {iban} are filled per flat. The panel fills each person's name, flat, phone and vehicles, then gives a **WhatsApp** button per person (opens the chat with the text; you press send), e-mail (per person or BCC in batches) and **printable letters** with a signature list for legal notice (imza karşılığı, at least 15 days before the meeting). |
-| **Talepler** | Requests and corrections sent by residents; answer and close them. |
+| **Talepler** | Requests with a **category** (bakım/onarım, arıza, temizlik, gürültü, araç/otopark, diğer) and an optional **photo** (max 5 MB, admin and owner only — not visible to Güvenlik). Filter by open/closed and category, answer and close. |
 | **Duyurular** | Announcement board: the manager publishes a duyuru, arıza/kesinti, toplantı or güvenlik notice, pins the important ones, and sees **how many people read it and who**. Residents see unread items highlighted, press **Okudum**, and get an unread badge in the menu and on their phone tabs. No e-mail or WhatsApp needed for water cuts and elevator outages. |
 | **Aidat ve tahsilat** | Monthly aidat per flat (equal, or a monthly total split by arsa payı), created for a month with one click (never twice). Payments (havale, nakit, kart) close the oldest debt first. Shows this month's charges and collections, total receivable, overdue amounts and flats, the oldest due date, and an estimated late fee (KMK 20, up to 5% a month, only calculated, not charged). Full account statement per flat; wrong entries can be deleted (logged). Bulk actions on selected flats: prepare reminders, write a message, mark paid in full, add an extra charge (repair share, late fee). Settings: amount, due day, late-fee rate, the site's bank account (IBAN). CSV export. |
 | **Sakin kamera erişimi** | Master switch (off by default) for residents watching cameras. Default access per column: "Tüm sakinler" (shared areas such as the main gate) and per blok (that blok's entrance, elevator, parking); "Kamera adına göre öner" ticks cameras whose name contains the blok. A flat can get its own list in Daireler ve kişiler → Düzenle. Residents get the live picture only; the first view of each camera per day is logged. |
@@ -105,7 +105,7 @@ The menu on the left is grouped into eight sections: Sitem (residents only), İz
 |---|---|
 | **Kayıtlar** | Pick a camera, date and time range (or "Son 1 saat", "Son 6 saat", "Bugün", "Dün"). Lists the NVR's recording files with size and events. **İndir** downloads a file. |
 | **Olaylar ve loglar** | The panel's own drop history for any date range, and the NVR's own logs (logins, video loss, reboots, disk). Both export to CSV. |
-| **Dışa aktar** | **Full package (zip)** for the last 1/7/30/90 days, quick CSV exports, and the **download log**: who downloaded what and when (admins only). |
+| **Dışa aktar** | **Full package (zip)** for the last 1/7/30/90 days, quick CSV exports, and the **download log**: who downloaded what and when (admins only), with filters by date, person, action and detail, and **CSV export** of the filtered log (the export itself is logged). |
 
 ### Yönetim (management)
 
@@ -116,6 +116,7 @@ The menu on the left is grouped into eight sections: Sitem (residents only), İz
 | **Belgeler** | Document archive: upload PDF, Word, Excel, images or text (max 10 MB), with category and note; download and delete. Files are kept in `data/belgeler/`, which is part of the `data/` backup. Uploads, downloads and deletions are written to the audit log. Admin only. |
 | **Bakım günlüğü** | Notes on what was done on site, by whom and when, optionally attached to a device. |
 | **NVR arayüzü** | The Dahua NVR's own web interface inside the panel, with an "open in new tab" button for NVR firmware that refuses to be embedded. |
+| **Yedekler** | Daily automatic backup to `data/yedekler/` (hour and how many to keep are configurable), "Şimdi yedek al", download, and a **restore** that first takes a safety backup, then restores the database in place (safe while the panel runs) and reloads devices, site and accounts. Restore needs the typed confirmation GERI YUKLE. |
 | **Ayarlar** | NVR connection, user accounts, the memorial section (text and photo), site name, support contact, map labels, and your own password. |
 
 ### Hakkında (about)
@@ -325,6 +326,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Done (18 Nov, Phase C):** yearly calendar of the manager's legal duties with tickable KMK items and dated tasks, contracts and insurance policies with expiry alerts, document archive; "Yaklaşan işler" alerts on the home page.
 - **Done (18 Nov, UI refresh):** new task-first **Bugün** home (attention list, counters, agenda, quick actions), **Vardiya ekranı** for security (plate search + 6-camera wall), phone-first **Dairem** with a large balance card and bottom tabs for residents, calmer type and spacing, 44 px touch targets, plain-language labels, and a reduced menu (technical pages under **Teknik**).
 - **Done (18 Nov, Phase 1 of the roadmap):** announcement board with read receipts and unread badges; resident guest passes that appear instantly in the gate screen; parcel log at the gate and in Dairem; manual light/dark theme; highlighted menu section headers.
+- **Done (18 Nov, Phase 2):** request categories and photos; global search (⌘K) for managers and security; audit log filters and CSV export; daily automatic backups with a tested in-place restore (data/, config, site, devices and uploaded files).
 - **Tests:** `tests/api_smoke.py` runs 88 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access, calendar, contracts, documents) against a demo server.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.

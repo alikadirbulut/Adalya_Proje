@@ -22,8 +22,10 @@ import os
 import random
 import re
 import secrets
+import shutil
 import socket
 import sqlite3
+import tempfile
 import threading
 import time
 import webbrowser
@@ -36,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.3"
+VERSION = "2.4"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -57,7 +59,7 @@ CREATE TABLE IF NOT EXISTS vehicles (id INTEGER PRIMARY KEY, flat_id INTEGER, pl
 CREATE TABLE IF NOT EXISTS visitors (id INTEGER PRIMARY KEY, ts_in REAL, ts_out REAL, name TEXT, flat_id INTEGER,
     plate TEXT, purpose TEXT, user TEXT);
 CREATE TABLE IF NOT EXISTS requests (id INTEGER PRIMARY KEY, ts REAL, flat_id INTEGER, user TEXT, text TEXT,
-    status TEXT, reply TEXT, closed_by TEXT, closed_at REAL);
+    status TEXT, reply TEXT, closed_by TEXT, closed_at REAL, category TEXT, photo TEXT);
 CREATE TABLE IF NOT EXISTS charges (id INTEGER PRIMARY KEY, flat_id INTEGER, period TEXT, kind TEXT, amount REAL,
     due_date TEXT, note TEXT, ts REAL, user TEXT);
 CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, flat_id INTEGER, date TEXT, amount REAL, method TEXT,
@@ -108,7 +110,16 @@ def db():
     conn.execute("CREATE TABLE IF NOT EXISTS notes (ts REAL, user TEXT, device TEXT, text TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS audit (ts REAL, user TEXT, role TEXT, action TEXT, detail TEXT)")
     conn.executescript(REGISTRY_SQL)
+    migrate(conn)
     return conn
+
+
+def migrate(conn):
+    """Small forward-only migrations so an existing data/panel.db keeps working."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(requests)")}
+    for col in ("category", "photo"):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE requests ADD COLUMN {col} TEXT")
 
 
 def load_cfg():
@@ -655,12 +666,79 @@ def r_add_note(h, qs, user):
     h.json(200, {"ok": True})
 
 
+@route("GET", "/api/search", need="staff")
+def r_search(h, qs, user):
+    q = str(qs.get("q") or "").strip()[:60]
+    if len(q) < 2:
+        return h.json(200, {"query": q, "results": []})
+    conn = db()
+    like = f"%{q}%"
+    out = []
+    for r in conn.execute("SELECT id, blok, daire FROM flats WHERE blok LIKE ? OR daire LIKE ? OR kapi LIKE ? "
+                          "ORDER BY blok, CAST(daire AS INTEGER) LIMIT 4", (like, like, like)):
+        out.append({"type": "flat", "title": flat_label({"blok": r[1], "daire": r[2]}), "sub": "Daire", "href": "#/sakinler"})
+    for r in conn.execute("SELECT p.name, p.phone, p.kind, f.blok, f.daire FROM people p JOIN flats f ON f.id=p.flat_id "
+                          "WHERE p.name LIKE ? OR p.phone LIKE ? ORDER BY p.name LIMIT 5", (like, like)):
+        out.append({"type": "person", "title": r[0],
+                    "sub": KINDS.get(r[2], r[2] or "") + " · " + flat_label({"blok": r[3], "daire": r[4]}), "href": "#/sakinler"})
+    pk = plate_key(q)
+    if len(pk) >= 2:
+        for r in conn.execute("SELECT v.plate, v.model, v.color, f.blok, f.daire FROM vehicles v JOIN flats f ON f.id=v.flat_id "
+                              "WHERE v.plate_key LIKE ? LIMIT 5", (f"%{pk}%",)):
+            out.append({"type": "vehicle", "title": r[0], "sub": " · ".join(x for x in [r[1], r[2],
+                        flat_label({"blok": r[3], "daire": r[4]})] if x), "href": "#/ziyaret"})
+    if user["role"] == "admin":
+        for r in conn.execute("SELECT id, name FROM documents WHERE name LIKE ? ORDER BY ts DESC LIMIT 4", (like,)):
+            out.append({"type": "document", "title": r[1], "sub": "Belge", "href": f"/api/documents/file?id={r[0]}"})
+        for r in conn.execute("SELECT id, name, end_date FROM contracts WHERE name LIKE ? OR provider LIKE ? LIMIT 4", (like, like)):
+            out.append({"type": "contract", "title": r[1], "sub": "Sözleşme" + (f" · {r[2]}" if r[2] else ""), "href": "#/sozlesmeler"})
+        for r in conn.execute("SELECT id, title FROM announcements WHERE title LIKE ? ORDER BY ts DESC LIMIT 4", (like,)):
+            out.append({"type": "announcement", "title": r[1], "sub": "Duyuru", "href": "#/duyurular"})
+    conn.close()
+    h.json(200, {"query": q, "results": out[:20]})
+
+
 @route("GET", "/api/audit", need="admin")
 def r_audit(h, qs, user):
     conn = db()
-    rows = conn.execute("SELECT ts, user, role, action, detail FROM audit ORDER BY ts DESC LIMIT 300").fetchall()
+    sql, args = "SELECT ts, user, role, action, detail FROM audit WHERE 1=1", []
+    if qs.get("user"):
+        sql += " AND user LIKE ?"; args.append(f"%{qs['user']}%")
+    if qs.get("action"):
+        sql += " AND action LIKE ?"; args.append(f"%{qs['action']}%")
+    if qs.get("q"):
+        sql += " AND detail LIKE ?"; args.append(f"%{qs['q']}%")
+    if qs.get("from"):
+        sql += " AND ts >= ?"; args.append(dparam(qs, "from", "1970-01-01").timestamp())
+    if qs.get("to"):
+        sql += " AND ts < ?"; args.append((dparam(qs, "to", datetime.now().strftime("%Y-%m-%d")) + timedelta(days=1)).timestamp())
+    sql += " ORDER BY ts DESC LIMIT 500"
+    rows = conn.execute(sql, args).fetchall()
     conn.close()
     h.json(200, {"audit": [{"ts": r[0], "user": r[1], "role": r[2], "action": r[3], "detail": r[4]} for r in rows]})
+
+
+@route("GET", "/api/audit.csv", need="admin")
+def r_audit_csv(h, qs, user):
+    conn = db()
+    sql, args = "SELECT ts, user, role, action, detail FROM audit WHERE 1=1", []
+    if qs.get("user"):
+        sql += " AND user LIKE ?"; args.append(f"%{qs['user']}%")
+    if qs.get("action"):
+        sql += " AND action LIKE ?"; args.append(f"%{qs['action']}%")
+    if qs.get("q"):
+        sql += " AND detail LIKE ?"; args.append(f"%{qs['q']}%")
+    if qs.get("from"):
+        sql += " AND ts >= ?"; args.append(dparam(qs, "from", "1970-01-01").timestamp())
+    if qs.get("to"):
+        sql += " AND ts < ?"; args.append((dparam(qs, "to", datetime.now().strftime("%Y-%m-%d")) + timedelta(days=1)).timestamp())
+    sql += " ORDER BY ts DESC LIMIT 20000"
+    rows = conn.execute(sql, args).fetchall()
+    conn.close()
+    data = csv_bytes(["Zaman", "Kişi", "Rol", "İşlem", "Ayrıntı"],
+                     [[fmt_ts(r[0]), r[1], ROLES.get(r[2], r[2]), r[3], r[4]] for r in rows])
+    audit(user, "Dışa aktarım", f"İşlem kaydı CSV ({len(rows)} satır)")
+    h.download(data, f"adalya-islem-kaydi-{stamp()}.csv", "text/csv; charset=utf-8")
 
 
 @route("GET", "/api/nvr/status")
@@ -1396,6 +1474,198 @@ def r_document_delete(h, qs, user):
     h.json(200, {"ok": True})
 
 
+# ---------------------------------------------------------------- backups
+# data/ is the only copy of accounts, residents, history and documents. A daily zip next to it
+# (data/yedekler/) plus a tested restore path is the difference between an outage and a disaster.
+
+BACKUP_DEFAULT = {"auto": True, "hour": 3, "keep": 14}
+
+
+def backup_dir():
+    return os.path.join(DATA, "yedekler")
+
+
+def backup_list():
+    d = backup_dir()
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for n in os.listdir(d):
+        if not n.endswith(".zip"):
+            continue
+        p = os.path.join(d, n)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        out.append({"name": n, "size": st.st_size, "ts": st.st_mtime})
+    return sorted(out, key=lambda b: b["name"], reverse=True)
+
+
+def create_backup(tag="manuel"):
+    os.makedirs(backup_dir(), exist_ok=True)
+    name = f"adalya-yedek-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{tag}.zip"
+    path = os.path.join(backup_dir(), name)
+    tmpdb = os.path.join(backup_dir(), ".tmp-backup.db")
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(tmpdb)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    try:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+            z.write(tmpdb, "panel.db")
+            for f in (CFG_PATH, SITE_PATH, DEVICES):
+                if os.path.isfile(f):
+                    z.write(f, os.path.basename(f))
+            for sub in ("belgeler", "talepler"):
+                d = os.path.join(DATA, sub)
+                if os.path.isdir(d):
+                    for n in os.listdir(d):
+                        p = os.path.join(d, n)
+                        if os.path.isfile(p):
+                            z.write(p, f"{sub}/{n}")
+    finally:
+        try:
+            os.remove(tmpdb)
+        except OSError:
+            pass
+    keep = int(get_setting("backup", BACKUP_DEFAULT).get("keep") or 14)
+    for old in backup_list()[keep:]:
+        try:
+            os.remove(os.path.join(backup_dir(), old["name"]))
+        except OSError:
+            pass
+    return name
+
+
+@route("GET", "/api/backups", need="admin")
+def r_backups(h, qs, user):
+    h.json(200, {"backups": backup_list(), "settings": get_setting("backup", BACKUP_DEFAULT),
+                 "dir": "data/yedekler"})
+
+
+@route("POST", "/api/backups", need="admin")
+def r_backup_create(h, qs, user):
+    name = create_backup("manuel")
+    audit(user, "Yedek", f"Yedek alındı: {name}")
+    h.json(200, {"ok": True, "name": name})
+
+
+@route("POST", "/api/backups/settings", need="admin")
+def r_backup_settings(h, qs, user):
+    b = h.body()
+    cur = get_setting("backup", BACKUP_DEFAULT)
+    if "auto" in b:
+        cur["auto"] = bool(b["auto"])
+    if "hour" in b:
+        try:
+            cur["hour"] = max(0, min(23, int(b["hour"])))
+        except (TypeError, ValueError):
+            raise ValueError("Saat 0–23 olmalı")
+    if "keep" in b:
+        try:
+            cur["keep"] = max(3, min(60, int(b["keep"])))
+        except (TypeError, ValueError):
+            raise ValueError("Saklama sayısı 3–60 olmalı")
+    put_setting("backup", cur)
+    audit(user, "Yedek", f"Ayarlar: otomatik={cur['auto']} saat={cur['hour']} adet={cur['keep']}")
+    h.json(200, {"ok": True, "settings": cur})
+
+
+@route("GET", "/api/backups/download", need="admin")
+def r_backup_download(h, qs, user):
+    name = os.path.basename(str(qs.get("name") or ""))
+    p = os.path.join(backup_dir(), name)
+    if not name.endswith(".zip") or not os.path.isfile(p):
+        raise ValueError("Yedek bulunamadı")
+    with open(p, "rb") as f:
+        data = f.read()
+    audit(user, "Yedek indirme", name)
+    h.download(data, name, "application/zip")
+
+
+@route("POST", "/api/backups/restore", need="admin")
+def r_backup_restore(h, qs, user):
+    b = h.body()
+    name = os.path.basename(str(b.get("name") or ""))
+    src_zip = os.path.join(backup_dir(), name)
+    if not name.endswith(".zip") or not os.path.isfile(src_zip):
+        raise ValueError("Yedek bulunamadı")
+    if str(b.get("confirm") or "").strip().upper() != "GERI YUKLE":
+        raise ValueError("Onay için GERI YUKLE yazın")
+    safety = create_backup("geri-yukleme-oncesi")
+    tmp_db = os.path.join(DATA, "restore-tmp.db")
+    try:
+        with zipfile.ZipFile(src_zip) as z:
+            names = set(z.namelist())
+            if "panel.db" not in names:
+                raise ValueError("Yedekte panel.db yok")
+            with z.open("panel.db") as f, open(tmp_db, "wb") as out:
+                shutil.copyfileobj(f, out)
+            for fname, target in (("config.json", CFG_PATH), ("site.json", SITE_PATH), ("devices.json", DEVICES)):
+                if fname in names:
+                    p = target + ".tmp"
+                    with open(p, "wb") as out:
+                        out.write(z.read(fname))
+                    os.replace(p, target)
+            for member in names:
+                if member.startswith(("belgeler/", "talepler/")) and ".." not in member:
+                    dest = os.path.join(DATA, *member.split("/"))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with z.open(member) as f, open(dest, "wb") as out:
+                        shutil.copyfileobj(f, out)
+        # Restore INTO the live database (SQLite backup API): replacing the file fails on Windows
+        # while the poller or a request still holds a connection.
+        busy = None
+        for _ in range(6):
+            try:
+                uri = "file:" + quote(tmp_db.replace(os.sep, "/"), safe="/:") + "?mode=ro"
+                src = sqlite3.connect(uri, uri=True)
+                dst = sqlite3.connect(DB_PATH, timeout=15)
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
+                    src.close()
+                busy = None
+                break
+            except sqlite3.OperationalError as e:
+                busy = e
+                time.sleep(0.4)
+        if busy is not None:
+            raise ValueError("Veritabanı meşgul; birkaç saniye sonra tekrar deneyin")
+    except PermissionError as e:
+        raise ValueError(f"Geri yükleme dosya hatası: {e}")
+    finally:
+        try:
+            os.remove(tmp_db)
+        except OSError:
+            pass
+    load_cfg()
+    load_site()
+    load_devices()
+    audit(user, "Yedek", f"Geri yüklendi: {name} (güvenlik yedeği: {safety})")
+    h.json(200, {"ok": True, "safety": safety, "note": "Panel sayfalarını yenileyin."})
+
+
+def backup_worker():
+    while True:
+        try:
+            st = get_setting("backup", BACKUP_DEFAULT)
+            if st.get("auto"):
+                hour = int(st.get("hour") or 3)
+                last = max([b["ts"] for b in backup_list()] or [0])
+                if datetime.now().hour >= hour and time.time() - last > 20 * 3600:
+                    name = create_backup("otomatik")
+                    audit({"name": "Sistem", "role": "system"}, "Yedek", f"Otomatik yedek: {name}")
+        except Exception:
+            pass
+        time.sleep(600)
+
+
 # ---------------------------------------------------------------- announcements, guest passes, packages
 # Announcements and guest passes are personal-data light but still KVKK-relevant: the gate sees
 # only name, plate and flat; read receipts are usernames, never exposed to residents.
@@ -2112,28 +2382,93 @@ def r_my(h, qs, user):
                  "requests": [{"id": r[0], "ts": r[1], "text": r[2], "status": r[3], "reply": r[4]} for r in reqs]})
 
 
+REQ_CATEGORIES = {"bakim": "Bakım / onarım", "ariza": "Arıza", "temizlik": "Temizlik",
+                  "gurultu": "Gürültü", "arac": "Araç / otopark", "diger": "Diğer"}
+
+
+def request_dir():
+    return os.path.join(DATA, "talepler")
+
+
+def decode_photo(b):
+    """Resident request photo: base64 data URL, JPG/PNG/WEBP, max 5 MB."""
+    import base64
+    raw = str(b.get("photo") or "")
+    if not raw:
+        return None
+    m = re.match(r"^data:image/(jpeg|png|webp);base64,(.+)$", raw, re.S)
+    if not m:
+        raise ValueError("Fotoğraf JPG, PNG veya WEBP olmalı")
+    try:
+        data = base64.b64decode(m.group(2), validate=False)
+    except (ValueError, TypeError):
+        raise ValueError("Fotoğraf okunamadı")
+    if len(data) > 5_000_000:
+        raise ValueError("Fotoğraf en fazla 5 MB olabilir")
+    magic = {"jpeg": b"\xff\xd8", "png": b"\x89PNG", "webp": b"RIFF"}[m.group(1)]
+    if not data.startswith(magic):
+        raise ValueError("Dosya bir fotoğraf değil")
+    return data, {"jpeg": "jpg", "png": "png", "webp": "webp"}[m.group(1)]
+
+
 @route("POST", "/api/my/request", need="user")
 def r_my_request(h, qs, user):
     if user["role"] != "resident" or not user.get("flat_id"):
         return h.json(400, {"error": "Bu işlem site sakinleri içindir"})
-    t = txt(h.body(), "text", 2000)
+    b = h.body(max_bytes=8_000_000)
+    t = txt(b, "text", 2000)
     if not t:
         raise ValueError("Talebinizi yazın")
+    cat = b.get("category") if b.get("category") in REQ_CATEGORIES else "diger"
+    photo = decode_photo(b)
     conn = db()
-    conn.execute("INSERT INTO requests (ts, flat_id, user, text, status) VALUES (?,?,?,?, 'acik')", (time.time(), user["flat_id"], user["name"], t))
+    rid = conn.execute("INSERT INTO requests (ts, flat_id, user, text, status, category) VALUES (?,?,?,?, 'acik', ?)",
+                       (time.time(), user["flat_id"], user["name"], t, cat)).lastrowid
+    if photo:
+        data, ext = photo
+        os.makedirs(request_dir(), exist_ok=True)
+        name = f"{rid}-{secrets.token_hex(4)}.{ext}"
+        with open(os.path.join(request_dir(), name), "wb") as f:
+            f.write(data)
+        conn.execute("UPDATE requests SET photo=? WHERE id=?", (name, rid))
     conn.commit()
     conn.close()
-    h.json(200, {"ok": True})
+    audit(user, "Talep", f"{REQ_CATEGORIES[cat]} · {t[:60]}")
+    h.json(200, {"ok": True, "id": rid})
+
+
+@route("GET", "/api/requests/photo", need="user")
+def r_request_photo(h, qs, user):
+    conn = db()
+    r = conn.execute("SELECT flat_id, photo FROM requests WHERE id=?", (qs.get("id"),)).fetchone()
+    conn.close()
+    if not r or not r[1]:
+        raise ValueError("Fotoğraf yok")
+    if user["role"] == "staff":
+        return h.json(403, {"error": "Bu fotoğraf güvenlik rolüne kapalı"})
+    if user["role"] == "resident" and r[0] != user.get("flat_id"):
+        return h.json(403, {"error": "Bu talep size ait değil"})
+    p = os.path.join(request_dir(), os.path.basename(r[1]))
+    if not os.path.isfile(p):
+        raise ValueError("Fotoğraf dosyası yok")
+    ext = os.path.splitext(p)[1].lstrip(".").lower()
+    ctype = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "application/octet-stream")
+    with open(p, "rb") as f:
+        h.raw(200, f.read(), ctype)
 
 
 @route("GET", "/api/requests", need="admin")
 def r_requests(h, qs, user):
     conn = db()
-    rows = conn.execute("SELECT r.id, r.ts, r.user, r.text, r.status, r.reply, r.closed_by, r.closed_at, f.blok, f.daire FROM requests r "
-                        "LEFT JOIN flats f ON f.id=r.flat_id ORDER BY r.status='kapali', r.ts DESC LIMIT 300").fetchall()
+    rows = conn.execute("SELECT r.id, r.ts, r.user, r.text, r.status, r.reply, r.closed_by, r.closed_at, f.blok, f.daire, "
+                        "r.category, r.photo FROM requests r LEFT JOIN flats f ON f.id=r.flat_id "
+                        "ORDER BY r.status='kapali', r.ts DESC LIMIT 300").fetchall()
     conn.close()
-    h.json(200, {"requests": [{"id": r[0], "ts": r[1], "user": r[2], "text": r[3], "status": r[4], "reply": r[5], "closed_by": r[6],
-                               "closed_at": r[7], "flat": flat_label({"blok": r[8], "daire": r[9]}) if r[9] else ""} for r in rows]})
+    h.json(200, {"requests": [{"id": r[0], "ts": r[1], "user": r[2], "text": r[3], "status": r[4], "reply": r[5],
+                               "closed_by": r[6], "closed_at": r[7],
+                               "flat": flat_label({"blok": r[8], "daire": r[9]}) if r[9] else "",
+                               "category": r[10] or "diger", "has_photo": bool(r[11])} for r in rows],
+                 "categories": REQ_CATEGORIES})
 
 
 @route("POST", "/api/requests/close", need="admin")
@@ -2832,13 +3167,14 @@ def main():
     if args.demo and os.path.exists(DB_PATH):
         os.remove(DB_PATH)
     if args.demo:
-        bdir = os.path.join(DATA, "belgeler")
-        if os.path.isdir(bdir):
-            for n in os.listdir(bdir):
-                try:
-                    os.remove(os.path.join(bdir, n))
-                except OSError:
-                    pass
+        for sub in ("belgeler", "talepler", "yedekler"):
+            bdir = os.path.join(DATA, sub)
+            if os.path.isdir(bdir):
+                for n in os.listdir(bdir):
+                    try:
+                        os.remove(os.path.join(bdir, n))
+                    except OSError:
+                        pass
     load_cfg()
     load_site()
     load_devices()
@@ -2864,6 +3200,7 @@ def main():
 
     srv, port = open_server("0.0.0.0" if args.lan else "127.0.0.1", args.port or 8080, args.port is not None)
     threading.Thread(target=poller, daemon=True).start()
+    threading.Thread(target=backup_worker, daemon=True).start()
     url = f"http://127.0.0.1:{port}"
     print(f"Adalya Panel {VERSION} running at {url}{'  (demo)' if args.demo else ''}")
     if port != 8080 and args.port is None:
