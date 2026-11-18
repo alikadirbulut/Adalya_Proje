@@ -526,7 +526,7 @@ const NAV = [
   ["Kayıt ve kanıt", false, [["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olaylar ve loglar", "S"], ["disa", "Dışa aktar", "S"]]],
   ["Sakinler", false, [["sakinler", "Daireler ve kişiler", "S"], ["aidat", "Aidat ve tahsilat", "A"], ["ziyaret", "Ziyaretçi ve araç", "S"], ["mesaj", "Mesaj gönder", "A"], ["talepler", "Talepler", "A"], ["kamerayetki", "Sakin kamera erişimi", "A"]]],
   ["İletişim", false, [["duyurular", "Duyurular", "SAR"]]],
-  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
+  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["isletme", "İşletme projesi", "A"], ["gelirgider", "Gelir-gider", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
   ["Teknik", false, [["ag", "Ağ cihazları", "S"], ["yedekler", "Yedekler", "A"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
   ["Hakkında", false, [["proje", "Proje", "SR"]]],
 ];
@@ -2500,6 +2500,162 @@ PAGES.takvim = {
       this.year = +body.date.slice(0, 4); this.month = +body.date.slice(5, 7);
       this.load();
     } catch (e) { $("#tkErr").textContent = e.message; }
+  },
+};
+
+PAGES.isletme = {
+  year: 0,
+  render(el) {
+    const now = new Date();
+    if (!this.year) this.year = now.getFullYear();
+    el.innerHTML = head("İşletme projesi", "KMK 37 · yıllık gelir-gider tahmini ve daire başına avans",
+      `<button id="bpPrev" aria-label="Önceki yıl">‹</button><b id="bpYear" style="min-width:4em;text-align:center;display:inline-block">${this.year}</b><button id="bpNext" aria-label="Sonraki yıl">›</button>`) +
+      '<div id="bpBody"><div class="empty">Yükleniyor…</div></div>';
+    $("#bpPrev").onclick = () => { this.year--; this.load(); };
+    $("#bpNext").onclick = () => { this.year++; this.load(); };
+    this.load();
+  },
+  async load() {
+    $("#bpYear").textContent = this.year;
+    let r;
+    try { r = await api("/api/budget?year=" + this.year); }
+    catch (e) { $("#bpBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    this.data = r;
+    this.draw();
+  },
+  draw() {
+    const { budget: b, flats, statuses } = this.data;
+    const box = $("#bpBody");
+    if (!b) {
+      box.innerHTML = `<div class="card"><div class="card-h"><h2>${this.year} için işletme projesi</h2></div>
+        <p style="color:var(--muted);margin:0 0 10px">Yıllık gelir-gider tahminini girin, daire başına avans arsa payına göre hesaplanır. Bildirimden sonra 7 gün içinde itiraz edilmezse kesinleşir (KMK 37).</p>
+        <div class="form"><div style="flex:1;min-width:240px"><label for="bpNote">Not (isteğe bağlı)</label><input id="bpNote" maxlength="400" placeholder="2027 yılı tahmini"></div>
+          <button class="primary" id="bpCreate">Projeyi oluştur</button></div>
+        <div class="err" id="bpErr"></div></div>`;
+      $("#bpCreate").onclick = async () => {
+        try { await post("/api/budget", { year: this.year, note: $("#bpNote").value }); this.load(); }
+        catch (e) { $("#bpErr").textContent = e.message; }
+      };
+      return;
+    }
+    const editable = b.status === "taslak";
+    const shares = flats.map(f => f.share);
+    const avg = shares.length ? shares.reduce((a, x) => a + x, 0) / shares.length : 0;
+    const chip = { taslak: "plain", bildirildi: "warn", kesin: "ok" }[b.status] || "plain";
+    box.innerHTML = `
+      <div class="card"><div class="card-h"><h2>${this.year} işletme projesi</h2><span class="chip ${chip}">${statuses[b.status] || b.status}</span></div>
+        ${b.note ? `<div class="hint" style="margin-bottom:8px">${esc(b.note)}</div>` : ""}
+        <div class="facts">
+          <div class="fact"><div class="l">Tahmini gelir</div><div class="v ok">${TL(b.gelir)}</div></div>
+          <div class="fact"><div class="l">Tahmini gider</div><div class="v">${TL(b.gider)}</div></div>
+          <div class="fact"><div class="l">Toplanacak (avans)</div><div class="v ${b.net > 0 ? "warn" : "ok"}">${TL(b.net)}</div></div>
+          <div class="fact"><div class="l">Daire başına ortalama</div><div class="v">${TL(avg)}</div></div>
+        </div>
+        <div class="tablewrap"><table><thead><tr><th>Tür</th><th>Açıklama</th><th style="text-align:right">Tutar</th>${editable ? "<th></th>" : ""}</tr></thead><tbody>
+          ${b.lines.length ? b.lines.map(l => `<tr><td><span class="chip ${l.kind === "gelir" ? "green" : "plain"}">${l.kind === "gelir" ? "Gelir" : "Gider"}</span></td>
+            <td>${esc(l.label)}${l.note ? ` <span class="hint">${esc(l.note)}</span>` : ""}</td><td style="text-align:right">${TL(l.amount)}</td>
+            ${editable ? `<td style="text-align:right"><button data-bpl="${l.id}">Sil</button></td>` : ""}</tr>`).join("")
+            : `<tr><td colspan="${editable ? 4 : 3}" class="empty">Henüz satır yok. Aşağıdan gelir ve gider ekleyin.</td></tr>`}
+        </tbody></table></div>
+        ${editable ? `<div class="form" style="margin-top:12px">
+          <div><label for="bpKind">Tür</label><select id="bpKind"><option value="gider">Gider</option><option value="gelir">Gelir</option></select></div>
+          <div style="flex:1;min-width:220px"><label for="bpLabel">Açıklama</label><input id="bpLabel" maxlength="120" placeholder="Asansör bakım sözleşmesi"></div>
+          <div><label for="bpAmount">Tutar (TL)</label><input id="bpAmount" inputmode="decimal" style="width:130px"></div>
+          <button id="bpAdd">Ekle</button></div><div class="err" id="bpLineErr"></div>` : ""}
+        <div class="warnbox" style="margin-top:12px">${b.status === "taslak" ? "Proje taslak. Bildirdiğinizde 7 günlük itiraz süresi başlar ve satırlar kilitlenir." : b.status === "bildirildi" ? `Sahiplerine bildirildi. İtiraz süresi: <b>${trDate(b.objection_until)}</b>. Bu tarihe kadar itiraz gelmezse kesinleşir.` : "Proje kesinleşti; daire başına avanslar aşağıdaki gibidir."}</div>
+        <div style="margin-top:10px">
+          ${b.status === "taslak" ? '<button class="primary" id="bpNotify">Bildirildi olarak işaretle</button>' : ""}
+          ${b.status === "bildirildi" ? '<button class="primary" id="bpFinal">Kesinleştir</button>' : ""}
+        </div>
+        <div class="err" id="bpErr"></div>
+      </div>
+      <div class="card"><div class="card-h"><h2>Daire başına avans</h2><span class="hint">Arsa payına göre</span></div>
+        <div class="tablewrap"><table><thead><tr><th>Daire</th><th style="text-align:right">Arsa payı</th><th style="text-align:right">Yıllık avans</th></tr></thead><tbody>
+          ${flats.map(f => `<tr><td>${esc(f.label)}</td><td style="text-align:right">${f.arsa || "–"}</td><td style="text-align:right">${TL(f.share)}</td></tr>`).join("")}
+        </tbody></table></div></div>
+      <div class="hint">Bu sayfa yöneticiye yardımcı bir araçtır; hukuki görüş değildir. Yönetim planı ve avukatınızın görüşü esastır.</div>`;
+    $$("[data-bpl]").forEach(x => x.onclick = async () => {
+      if (!confirm("Satır silinsin mi?")) return;
+      try { await post("/api/budget/line/delete", { id: +x.dataset.bpl }); this.load(); } catch (e) { $("#bpLineErr").textContent = e.message; }
+    });
+    $("#bpAdd")?.addEventListener("click", async () => {
+      $("#bpLineErr").textContent = "";
+      try {
+        await post("/api/budget/line", { budget_id: b.id, kind: $("#bpKind").value, label: $("#bpLabel").value, amount: $("#bpAmount").value });
+        this.load();
+      } catch (e) { $("#bpLineErr").textContent = e.message; }
+    });
+    $("#bpNotify")?.addEventListener("click", async () => {
+      if (!confirm("Proje sahiplerine bildirildi olarak işaretlensin mi? 7 günlük itiraz süresi başlar ve satırlar kilitlenir.")) return;
+      try { await post("/api/budget/status", { id: b.id, action: "notify" }); this.load(); } catch (e) { $("#bpErr").textContent = e.message; }
+    });
+    $("#bpFinal")?.addEventListener("click", async () => {
+      const early = b.objection_until && b.objection_until >= ymd(new Date());
+      if (early && !confirm(`İtiraz süresi ${trDate(b.objection_until)} tarihinde bitiyor. Erken kesinleştirmek istediğinize emin misiniz?`)) return;
+      try { await post("/api/budget/status", { id: b.id, action: "final", force: early }); this.load(); } catch (e) { $("#bpErr").textContent = e.message; }
+    });
+  },
+};
+
+PAGES.gelirgider = {
+  year: 0,
+  render(el) {
+    if (!this.year) this.year = new Date().getFullYear();
+    el.innerHTML = head("Gelir-gider", "Aidat dışındaki gelir ve giderler, yıllık özet",
+      `<button id="cgPrev" aria-label="Önceki yıl">‹</button><b id="cgYear" style="min-width:4em;text-align:center;display:inline-block">${this.year}</b><button id="cgNext" aria-label="Sonraki yıl">›</button> <a class="btn" id="cgCsv" target="_blank" rel="noopener">CSV indir</a>`) +
+      '<div id="cgBody"><div class="empty">Yükleniyor…</div></div>';
+    $("#cgPrev").onclick = () => { this.year--; this.load(); };
+    $("#cgNext").onclick = () => { this.year++; this.load(); };
+    this.load();
+  },
+  async load() {
+    $("#cgYear").textContent = this.year;
+    $("#cgCsv").href = "/api/cash.csv?year=" + this.year;
+    let r;
+    try { r = await api("/api/cash?year=" + this.year); }
+    catch (e) { $("#cgBody").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
+    this.data = r;
+    this.draw();
+  },
+  draw() {
+    const d = this.data;
+    $("#cgBody").innerHTML = `
+      <section class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="stat"><div class="top"><span class="l">Gelir</span></div><div class="v ok">${TL(d.gelir)}</div></div>
+        <div class="stat"><div class="top"><span class="l">Gider</span></div><div class="v">${TL(d.gider)}</div></div>
+        <div class="stat"><div class="top"><span class="l">Net</span></div><div class="v ${d.net < 0 ? "bad" : "ok"}">${TL(d.net)}</div></div>
+      </section>
+      <div class="card"><div class="card-h"><h2>Yeni kayıt</h2></div>
+        <div class="form">
+          <div><label for="cgDate">Tarih</label><input id="cgDate" type="date" value="${ymd(new Date())}"></div>
+          <div><label for="cgKind">Tür</label><select id="cgKind"><option value="gider">Gider</option><option value="gelir">Gelir</option></select></div>
+          <div><label for="cgCat">Kategori</label><select id="cgCat">${Object.entries(d.categories).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div>
+          <div style="flex:1;min-width:200px"><label for="cgLabel">Açıklama</label><input id="cgLabel" maxlength="120" placeholder="Kasım elektrik faturası"></div>
+          <div><label for="cgAmount">Tutar (TL)</label><input id="cgAmount" inputmode="decimal" style="width:120px"></div>
+          <div style="flex:1;min-width:160px"><label for="cgNote">Not</label><input id="cgNote" maxlength="200"></div>
+          <button class="primary" id="cgAdd">Ekle</button>
+        </div><div class="err" id="cgErr"></div>
+      </div>
+      <div class="card"><div class="card-h"><h2>${this.year} kayıtları</h2><span class="hint">${d.entries.length} kayıt</span></div>
+        ${d.entries.length ? `<div class="tablewrap"><table><thead><tr><th>Tarih</th><th>Tür</th><th>Kategori</th><th>Açıklama</th><th style="text-align:right">Tutar</th><th></th></tr></thead><tbody>
+          ${d.entries.map(e => `<tr><td>${trDate(e.date)}</td><td><span class="chip ${e.kind === "gelir" ? "green" : "plain"}">${e.kind === "gelir" ? "Gelir" : "Gider"}</span></td>
+            <td>${esc(d.categories[e.category] || e.category)}</td><td>${esc(e.label)}${e.note ? ` <span class="hint">${esc(e.note)}</span>` : ""} <span class="hint">${esc(e.user)}</span></td>
+            <td style="text-align:right">${TL(e.amount)}</td><td style="text-align:right"><button data-cgd="${e.id}">Sil</button></td></tr>`).join("")}
+        </tbody></table></div>` : '<div class="empty">Bu yıl için kayıt yok.</div>'}
+      </div>`;
+    $("#cgAdd").onclick = async () => {
+      $("#cgErr").textContent = "";
+      try {
+        await post("/api/cash", { date: $("#cgDate").value, kind: $("#cgKind").value, category: $("#cgCat").value, label: $("#cgLabel").value, amount: $("#cgAmount").value, note: $("#cgNote").value });
+        this.load();
+      } catch (e) { $("#cgErr").textContent = e.message; }
+    };
+    $("#cgCat").value = "elektrik";
+    $("#cgKind").onchange = () => { $("#cgCat").value = $("#cgKind").value === "gelir" ? "kira" : "elektrik"; };
+    $$("[data-cgd]").forEach(b => b.onclick = async () => {
+      if (!confirm("Kayıt silinsin mi?")) return;
+      try { await post("/api/cash/delete", { id: +b.dataset.cgd }); this.load(); } catch (e) { $("#cgErr").textContent = e.message; }
+    });
   },
 };
 

@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.5"
+VERSION = "2.6"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS packages (id INTEGER PRIMARY KEY, flat_id INTEGER, co
     ts_in REAL, ts_out REAL, user TEXT);
 CREATE TABLE IF NOT EXISTS receipts (id INTEGER PRIMARY KEY, no INTEGER, year INTEGER, payment_id INTEGER UNIQUE,
     flat_id INTEGER, ts REAL, user TEXT);
+CREATE TABLE IF NOT EXISTS budgets (id INTEGER PRIMARY KEY, year INTEGER UNIQUE, status TEXT DEFAULT 'taslak',
+    note TEXT, notified_at REAL, objection_until TEXT, created_by TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS budget_lines (id INTEGER PRIMARY KEY, budget_id INTEGER, kind TEXT, label TEXT,
+    amount REAL, note TEXT);
+CREATE TABLE IF NOT EXISTS cash (id INTEGER PRIMARY KEY, date TEXT, kind TEXT, category TEXT, label TEXT,
+    amount REAL, note TEXT, user TEXT, ts REAL);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -2622,8 +2628,256 @@ def seed_demo_comms():
     for flat_id, courier, note, back in [(1, "Kargo (demo)", "2 paket", 3600), (3, "Market", "1 poşet", 7200)]:
         conn.execute("INSERT INTO packages (flat_id, courier, note, ts_in, user) VALUES (?,?,?,?,?)",
                      (flat_id, courier, note, now - back, "Demo güvenlik"))
+    year = today.year
+    bid = conn.execute("INSERT INTO budgets (year, status, note, created_by, ts) VALUES (?,'taslak',?,'Demo yönetim',?)",
+                       (year, f"{year} yılı işletme projesi", now)).lastrowid
+    for kind, label, amount in [("gelir", "Ortak alan kira geliri", 24000), ("gider", "Asansör bakım sözleşmesi", 84000),
+                                ("gider", "Temizlik hizmeti", 192000), ("gider", "Elektrik ve su", 96000),
+                                ("gider", "Sigorta", 42500)]:
+        conn.execute("INSERT INTO budget_lines (budget_id, kind, label, amount, note) VALUES (?,?,?,?,'')",
+                     (bid, kind, label, amount))
+    for back, kind, cat, label, amount in [(13, "gider", "elektrik", "Elektrik faturası", 8200),
+                                           (9, "gider", "temizlik", "Temizlik hizmeti", 16000),
+                                           (4, "gelir", "kira", "Ortak alan kira geliri", 2000)]:
+        conn.execute("INSERT INTO cash (date, kind, category, label, amount, note, user, ts) VALUES (?,?,?,?,?,'','Demo yönetim',?)",
+                     ((today + timedelta(days=-back)).isoformat(), kind, cat, label, amount, now))
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------- işletme projesi (KMK 37) and income/expense
+# KMK 37: the yearly estimate is notified to owners; it becomes final unless objected within 7 days.
+# The panel is the working copy; the notarised book and the yönetim planı stay official.
+
+BUDGET_STATUS = {"taslak": "Taslak", "bildirildi": "Bildirildi", "kesin": "Kesinleşti"}
+CASH_CATS = {"kira": "Kira geliri", "bagis": "Bağış", "faiz": "Faiz", "aidat": "Aidat",
+             "temizlik": "Temizlik", "asansor": "Asansör", "elektrik": "Elektrik", "su": "Su",
+             "personel": "Personel", "bakim": "Bakım / onarım", "vergi": "Vergi", "diger": "Diğer"}
+
+
+def budget_payload(conn, year):
+    b = conn.execute("SELECT id, year, status, note, notified_at, objection_until, created_by, ts FROM budgets WHERE year=?",
+                     (year,)).fetchone()
+    flats = [{"id": r[0], "label": flat_label({"blok": r[1], "daire": r[2]}), "arsa": r[3] or 0}
+             for r in conn.execute("SELECT id, blok, daire, arsa_payi FROM flats ORDER BY blok, CAST(daire AS INTEGER)")]
+    if not b:
+        return {"year": year, "budget": None, "flats": flats, "statuses": BUDGET_STATUS}
+    lines = [{"id": r[0], "kind": r[1], "label": r[2], "amount": r[3], "note": r[4] or ""}
+             for r in conn.execute("SELECT id, kind, label, amount, note FROM budget_lines WHERE budget_id=? ORDER BY kind DESC, id",
+                                   (b[0],))]
+    gelir = round(sum(l["amount"] for l in lines if l["kind"] == "gelir"), 2)
+    gider = round(sum(l["amount"] for l in lines if l["kind"] == "gider"), 2)
+    net = round(gider - gelir, 2)
+    tot = sum(f["arsa"] for f in flats)
+    for f in flats:
+        f["share"] = round(net * f["arsa"] / tot, 2) if tot else (round(net / len(flats), 2) if flats else 0)
+    return {"year": year, "flats": flats, "statuses": BUDGET_STATUS,
+            "budget": {"id": b[0], "status": b[2], "note": b[3] or "", "notified_at": b[4],
+                       "objection_until": b[5] or "", "created_by": b[6] or "", "ts": b[7],
+                       "lines": lines, "gelir": gelir, "gider": gider, "net": net}}
+
+
+@route("GET", "/api/budget", need="admin")
+def r_budget(h, qs, user):
+    try:
+        year = int(qs.get("year") or datetime.now().year)
+    except (TypeError, ValueError):
+        raise ValueError("Yıl geçersiz")
+    if not 2000 <= year <= 2100:
+        raise ValueError("Yıl geçersiz")
+    conn = db()
+    data = budget_payload(conn, year)
+    conn.close()
+    h.json(200, data)
+
+
+@route("POST", "/api/budget", need="admin")
+def r_budget_create(h, qs, user):
+    b = h.body()
+    try:
+        year = int(b.get("year"))
+    except (TypeError, ValueError):
+        raise ValueError("Yıl gerekli")
+    if not 2000 <= year <= 2100:
+        raise ValueError("Yıl geçersiz")
+    conn = db()
+    if conn.execute("SELECT 1 FROM budgets WHERE year=?", (year,)).fetchone():
+        conn.close()
+        raise ValueError(f"{year} için işletme projesi zaten var")
+    bid = conn.execute("INSERT INTO budgets (year, status, note, created_by, ts) VALUES (?,'taslak',?,?,?)",
+                       (year, txt(b, "note", 400), user["name"], time.time())).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "İşletme projesi", f"{year} oluşturuldu")
+    h.json(200, {"ok": True, "id": bid})
+
+
+@route("POST", "/api/budget/line", need="admin")
+def r_budget_line(h, qs, user):
+    b = h.body()
+    try:
+        bid = int(b.get("budget_id"))
+    except (TypeError, ValueError):
+        raise ValueError("Proje seçin")
+    kind = b.get("kind") if b.get("kind") in ("gelir", "gider") else None
+    if not kind:
+        raise ValueError("Tür gelir veya gider olmalı")
+    label = txt(b, "label", 120)
+    if not label:
+        raise ValueError("Açıklama gerekli")
+    amount = money(b.get("amount"), "Tutar")
+    if amount <= 0:
+        raise ValueError("Tutar 0'dan büyük olmalı")
+    conn = db()
+    st = conn.execute("SELECT status FROM budgets WHERE id=?", (bid,)).fetchone()
+    if not st:
+        conn.close()
+        raise ValueError("Proje bulunamadı")
+    if st[0] != "taslak":
+        conn.close()
+        raise ValueError("Bildirilmiş proje değiştirilemez")
+    lid = conn.execute("INSERT INTO budget_lines (budget_id, kind, label, amount, note) VALUES (?,?,?,?,?)",
+                       (bid, kind, label, amount, txt(b, "note", 200))).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "İşletme projesi", f"{kind}: {label} · {amount} TL")
+    h.json(200, {"ok": True, "id": lid})
+
+
+@route("POST", "/api/budget/line/delete", need="admin")
+def r_budget_line_delete(h, qs, user):
+    lid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT budget_id, label FROM budget_lines WHERE id=?", (lid,)).fetchone()
+    if not r:
+        conn.close()
+        return h.json(404, {"error": "Satır bulunamadı"})
+    st = conn.execute("SELECT status FROM budgets WHERE id=?", (r[0],)).fetchone()
+    if st and st[0] != "taslak":
+        conn.close()
+        raise ValueError("Bildirilmiş proje değiştirilemez")
+    conn.execute("DELETE FROM budget_lines WHERE id=?", (lid,))
+    conn.commit()
+    conn.close()
+    audit(user, "İşletme projesi", f"Satır silindi: {r[1]}")
+    h.json(200, {"ok": True})
+
+
+@route("POST", "/api/budget/status", need="admin")
+def r_budget_status(h, qs, user):
+    b = h.body()
+    try:
+        bid = int(b.get("id"))
+    except (TypeError, ValueError):
+        raise ValueError("Proje seçin")
+    action = b.get("action")
+    conn = db()
+    r = conn.execute("SELECT year, status, objection_until FROM budgets WHERE id=?", (bid,)).fetchone()
+    if not r:
+        conn.close()
+        raise ValueError("Proje bulunamadı")
+    year, st, until = r
+    today = datetime.now().strftime("%Y-%m-%d")
+    if action == "notify":
+        if st != "taslak":
+            conn.close()
+            raise ValueError("Bu proje zaten bildirilmiş")
+        until = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+        conn.execute("UPDATE budgets SET status='bildirildi', notified_at=?, objection_until=? WHERE id=?",
+                     (time.time(), until, bid))
+        msg = f"{year} bildirildi · itiraz sonu {until}"
+    elif action == "final":
+        if st == "kesin":
+            conn.close()
+            raise ValueError("Proje zaten kesinleşti")
+        if st == "taslak":
+            conn.close()
+            raise ValueError("Önce projeyi bildirin")
+        if until and until >= today and not b.get("force"):
+            conn.close()
+            raise ValueError(f"7 günlük itiraz süresi {until} tarihinde bitiyor. Erken kesinleştirmek için onaylayın.")
+        conn.execute("UPDATE budgets SET status='kesin' WHERE id=?", (bid,))
+        msg = f"{year} kesinleşti"
+    else:
+        conn.close()
+        raise ValueError("İşlem geçersiz")
+    conn.commit()
+    conn.close()
+    audit(user, "İşletme projesi", msg)
+    h.json(200, {"ok": True})
+
+
+@route("GET", "/api/cash", need="admin")
+def r_cash(h, qs, user):
+    try:
+        year = int(qs.get("year") or datetime.now().year)
+    except (TypeError, ValueError):
+        raise ValueError("Yıl geçersiz")
+    conn = db()
+    rows = conn.execute("SELECT id, date, kind, category, label, amount, note, user, ts FROM cash "
+                        "WHERE substr(date,1,4)=? ORDER BY date DESC, id DESC", (str(year),)).fetchall()
+    conn.close()
+    entries = [{"id": r[0], "date": r[1], "kind": r[2], "category": r[3], "label": r[4] or "",
+                "amount": r[5], "note": r[6] or "", "user": r[7] or "", "ts": r[8]} for r in rows]
+    gelir = round(sum(e["amount"] for e in entries if e["kind"] == "gelir"), 2)
+    gider = round(sum(e["amount"] for e in entries if e["kind"] == "gider"), 2)
+    h.json(200, {"year": year, "entries": entries, "gelir": gelir, "gider": gider,
+                 "net": round(gelir - gider, 2), "categories": CASH_CATS})
+
+
+@route("POST", "/api/cash", need="admin")
+def r_cash_add(h, qs, user):
+    b = h.body()
+    kind = b.get("kind") if b.get("kind") in ("gelir", "gider") else None
+    if not kind:
+        raise ValueError("Tür gelir veya gider olmalı")
+    label = txt(b, "label", 120)
+    if not label:
+        raise ValueError("Açıklama gerekli")
+    amount = money(b.get("amount"), "Tutar")
+    if amount <= 0:
+        raise ValueError("Tutar 0'dan büyük olmalı")
+    date = opt_date(b, "date") or datetime.now().strftime("%Y-%m-%d")
+    cat = b.get("category") if b.get("category") in CASH_CATS else "diger"
+    conn = db()
+    cid = conn.execute("INSERT INTO cash (date, kind, category, label, amount, note, user, ts) VALUES (?,?,?,?,?,?,?,?)",
+                       (date, kind, cat, label, amount, txt(b, "note", 200), user["name"], time.time())).lastrowid
+    conn.commit()
+    conn.close()
+    audit(user, "Gelir-gider", f"{kind}: {label} · {amount} TL")
+    h.json(200, {"ok": True, "id": cid})
+
+
+@route("POST", "/api/cash/delete", need="admin")
+def r_cash_delete(h, qs, user):
+    cid = h.body().get("id")
+    conn = db()
+    r = conn.execute("SELECT label, amount FROM cash WHERE id=?", (cid,)).fetchone()
+    if not r:
+        conn.close()
+        return h.json(404, {"error": "Kayıt bulunamadı"})
+    conn.execute("DELETE FROM cash WHERE id=?", (cid,))
+    conn.commit()
+    conn.close()
+    audit(user, "Gelir-gider", f"Silindi: {r[0]} · {r[1]} TL")
+    h.json(200, {"ok": True})
+
+
+@route("GET", "/api/cash.csv", need="admin")
+def r_cash_csv(h, qs, user):
+    try:
+        year = int(qs.get("year") or datetime.now().year)
+    except (TypeError, ValueError):
+        raise ValueError("Yıl geçersiz")
+    conn = db()
+    rows = conn.execute("SELECT date, kind, category, label, amount, note, user FROM cash WHERE substr(date,1,4)=? "
+                        "ORDER BY date", (str(year),)).fetchall()
+    conn.close()
+    data = csv_bytes(["Tarih", "Tür", "Kategori", "Açıklama", "Tutar", "Not", "Kaydeden"],
+                     [[r[0], CASH_CATS.get(r[2], r[2]), ("Gelir" if r[1] == "gelir" else "Gider"), r[3], r[4], r[5], r[6]]
+                      for r in rows])
+    audit(user, "Dışa aktarım", f"Gelir-gider CSV {year} ({len(rows)} satır)")
+    h.download(data, f"adalya-gelir-gider-{year}.csv", "text/csv; charset=utf-8")
 
 
 # ---------------------------------------------------------------- settings stored in the database (data/, never committed)

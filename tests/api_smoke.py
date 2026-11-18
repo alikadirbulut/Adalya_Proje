@@ -1,4 +1,4 @@
-﻿"""Smoke tests for Adalya Paneli roles, registry, import, plate lookup and device inventory.
+"""Smoke tests for Adalya Paneli roles, registry, import, plate lookup and device inventory.
 
 Run against a DEMO server only (it adds and deletes test records; the demo works on copies in data-demo/,
 so the real devices.json and site.json are not touched). Start a fresh demo for each run:
@@ -329,6 +329,35 @@ check("bank preview matches flat and amount", row0.get("flat_id") == 1 and row0.
 c, ap = call("/api/dues/bank/apply", "admin", {"rows": [{"date": "2026-11-18", "amount": 1500, "desc": "A BLOK 1 kasım aidat", "flat_id": 1}]})
 check("bank apply records payment", c == 200 and ap["count"] == 1, ap)
 check("bank apply rejects empty rows", call("/api/dues/bank/apply", "admin", {"rows": []})[0] == 400)
+
+# ---------------------------------------------------------------- işletme projesi and income/expense
+check("staff cannot open budget", call("/api/budget?year=2099", "staff")[0] == 403)
+check("budget created", call("/api/budget", "admin", {"year": 2099, "note": "test"})[0] == 200)
+check("duplicate budget refused", call("/api/budget", "admin", {"year": 2099})[0] == 400)
+c, bp = call("/api/budget?year=2099")
+bid = bp["budget"]["id"]
+check("budget line gelir", call("/api/budget/line", "admin", {"budget_id": bid, "kind": "gelir", "label": "Kira", "amount": "1000"})[0] == 200)
+check("budget line gider", call("/api/budget/line", "admin", {"budget_id": bid, "kind": "gider", "label": "Temizlik", "amount": "6000"})[0] == 200)
+c, bp = call("/api/budget?year=2099")
+check("budget totals", bp["budget"]["gelir"] == 1000 and bp["budget"]["gider"] == 6000 and bp["budget"]["net"] == 5000, bp["budget"])
+shares = sum(f["share"] for f in bp["flats"])
+check("flat advances split by arsa", abs(shares - 5000) < 1, shares)
+check("budget notify", call("/api/budget/status", "admin", {"id": bid, "action": "notify"})[0] == 200)
+c, bp = call("/api/budget?year=2099")
+check("objection date set", bp["budget"]["status"] == "bildirildi" and bool(bp["budget"]["objection_until"]), bp["budget"])
+check("line locked after notify", call("/api/budget/line", "admin", {"budget_id": bid, "kind": "gider", "label": "x", "amount": 1})[0] == 400)
+check("final blocked in objection window", call("/api/budget/status", "admin", {"id": bid, "action": "final"})[0] == 400)
+check("final with force works", call("/api/budget/status", "admin", {"id": bid, "action": "final", "force": True})[0] == 200)
+
+check("cash add gider", call("/api/cash", "admin", {"date": "2099-01-10", "kind": "gider", "category": "elektrik", "label": "Elektrik", "amount": "250"})[0] == 200)
+check("cash add gelir", call("/api/cash", "admin", {"date": "2099-01-11", "kind": "gelir", "category": "bagis", "label": "Bağış", "amount": "100"})[0] == 200)
+c, cash = call("/api/cash?year=2099")
+check("cash totals", cash["gelir"] == 100 and cash["gider"] == 250 and cash["net"] == -150, cash)
+e = cash["entries"][0]
+check("cash delete", call("/api/cash/delete", "admin", {"id": e["id"]})[0] == 200)
+c, csvd = call("/api/cash.csv?year=2099")
+check("cash csv downloads", c == 200 and b"Tarih" in csvd, c)
+check("resident cannot see cash", call("/api/cash?year=2099", "resident")[0] == 403)
 
 # audit trail
 c, au = call("/api/audit")
