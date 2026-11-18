@@ -1790,14 +1790,18 @@ PAGES.aidat = {
         <div class="tablewrap"><table><thead><tr><th style="width:28px"><input type="checkbox" id="duAll" aria-label="Tümünü seç"></th><th>Daire</th><th>Ödeyen</th><th>Durum</th><th>Bakiye</th><th>En eski vade</th><th>Gecikme tazm.*</th><th></th></tr></thead><tbody id="duRows"></tbody></table></div>
         <div class="hint" style="margin-top:6px">* Kat Mülkiyeti Kanunu 20. madde: ödenmeyen aidat için aylık %${"<span id=duLate></span>"} gecikme tazminatı istenebilir. Burada yalnızca hesaplanır; borç olarak yazmak için seçip <b>Borç yaz</b> kullanın. Ödemeler en eski borçtan başlayarak kapatılır.</div></div>
       <div class="card"><h2>Son ödemeler</h2><div id="duRecent"></div></div>
+      <div class="card"><h2>Banka ekstresinden ödeme aktar <small>CSV: tarih, tutar, açıklama</small></h2>
+        <div class="form"><div style="flex:1;min-width:240px"><label for="biFile">Ekstre dosyası</label><input id="biFile" type="file" accept=".csv,text/csv"></div><button id="biPrev">Önizle</button></div>
+        <div class="err" id="biErr"></div><div class="okmsg" id="biOk"></div><div id="biRes" style="margin-top:10px"></div></div>
       <div class="card"><h2>Aidat ayarları</h2>
         <div class="form">
           <div><label for="dsMode">Hesaplama</label><select id="dsMode"><option value="esit">Her daire eşit</option><option value="arsa">Toplam tutar arsa payına göre</option></select></div>
           ${field("dsAmount", "Daire başı aylık (TL)", "", 'style="width:130px" inputmode="decimal"')}${field("dsTotal", "Aylık toplam (TL)", "", 'style="width:130px" inputmode="decimal"')}
           ${field("dsDay", "Son ödeme günü", "", 'type="number" min="1" max="28" style="width:90px"')}${field("dsLate", "Gecikme %/ay", "", 'type="number" min="0" max="5" step="0.5" style="width:90px"')}
         </div>
-        <div class="form" style="margin-top:10px">${field("dsAcc", "Hesap adı", "", 'placeholder="Adalya Sitesi Yönetimi" style="width:240px"')}${field("dsIban", "IBAN (sitenin adına)", "", 'placeholder="TR.." style="width:300px"')}<button class="primary" id="dsSave">Kaydet</button></div>
-        <div class="hint" style="margin-top:6px">Aidat tutarı kat malikleri kurulu kararı ve işletme projesiyle belirlenir (KMK 37). Banka hesabı site adına açılmalıdır. Bu sayfa hukuki danışmanlık değildir.</div>
+        <div class="form" style="margin-top:10px">${field("dsAcc", "Hesap adı", "", 'placeholder="Adalya Sitesi Yönetimi" style="width:240px"')}${field("dsIban", "IBAN (sitenin adına)", "", 'placeholder="TR.." style="width:300px"')}</div>
+        <div class="form" style="margin-top:10px">${field("dsPayUrl", "Ödeme bağlantısı (banka / sanal POS)", "", 'placeholder="https://..." style="width:380px"')}<button class="primary" id="dsSave">Kaydet</button></div>
+        <div class="hint" style="margin-top:6px">Aidat tutarı kat malikleri kurulu kararı ve işletme projesiyle belirlenir (KMK 37). Banka hesabı site adına açılmalıdır. Ödeme bağlantısı varsa sakinler Dairem ekranından doğrudan oraya gider. Bu sayfa hukuki danışmanlık değildir.</div>
         <div class="err" id="dsErr"></div><div class="okmsg" id="dsOk"></div></div>`;
     const now = new Date(); $("#duPeriod").value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
     $("#duFilter").onchange = () => this.rows();
@@ -1816,9 +1820,24 @@ PAGES.aidat = {
     };
     $("#dsSave").onclick = async () => {
       ["#dsErr", "#dsOk"].forEach(s => $(s).textContent = "");
-      try { await post("/api/dues/settings", { mode: $("#dsMode").value, amount: $("#dsAmount").value, total: $("#dsTotal").value, due_day: $("#dsDay").value, late_pct: $("#dsLate").value, iban: $("#dsIban").value, account_name: $("#dsAcc").value });
+      try { await post("/api/dues/settings", { mode: $("#dsMode").value, amount: $("#dsAmount").value, total: $("#dsTotal").value, due_day: $("#dsDay").value, late_pct: $("#dsLate").value, iban: $("#dsIban").value, account_name: $("#dsAcc").value, pay_url: $("#dsPayUrl").value });
         $("#dsOk").textContent = "Kaydedildi."; this.load(); }
       catch (e) { $("#dsErr").textContent = e.message; }
+    };
+    $("#biPrev").onclick = () => {
+      $("#biErr").textContent = ""; $("#biOk").textContent = "";
+      const f = $("#biFile").files[0];
+      if (!f) { $("#biErr").textContent = "Önce bir CSV dosyası seçin."; return; }
+      const rd = new FileReader();
+      rd.onload = async () => {
+        try {
+          const r = await post("/api/dues/bank/preview", { data: rd.result });
+          this.bank = r;
+          this.bankRender();
+        } catch (e) { $("#biErr").textContent = e.message; }
+      };
+      rd.onerror = () => { $("#biErr").textContent = "Dosya okunamadı."; };
+      rd.readAsDataURL(f);
     };
     $("#dsMode").onchange = () => { const a = $("#dsMode").value === "arsa"; $("#dsAmount").closest("div").style.display = a ? "none" : ""; $("#dsTotal").closest("div").style.display = a ? "" : "none"; };
     $("#duAll").onchange = () => { $$("#duRows [data-sel]").forEach(c => { c.checked = $("#duAll").checked; this.sel[c.dataset.sel] = c.checked; }); this.bulk(); };
@@ -1831,7 +1850,7 @@ PAGES.aidat = {
     const d = S.dues, s = d.settings, st = Object.values(d.flats);
     if (first) {
       $("#dsMode").value = s.mode; $("#dsAmount").value = s.amount || ""; $("#dsTotal").value = s.total || ""; $("#dsDay").value = s.due_day; $("#dsLate").value = s.late_pct;
-      $("#dsIban").value = s.iban; $("#dsAcc").value = s.account_name; $("#dsMode").onchange();
+      $("#dsIban").value = s.iban; $("#dsAcc").value = s.account_name; $("#dsPayUrl").value = s.pay_url || ""; $("#dsMode").onchange();
       $("#duPayMethod").innerHTML = Object.entries(d.methods).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
     }
     $("#duLate").textContent = String(s.late_pct).replace(".", ",");
@@ -1881,14 +1900,49 @@ PAGES.aidat = {
       ${r.ledger.length ? `<div class="tablewrap"><table><thead><tr><th>Tarih / vade</th><th>Açıklama</th><th style="text-align:right">Borç</th><th style="text-align:right">Ödeme</th><th style="text-align:right">Bakiye</th><th></th></tr></thead><tbody>
         ${r.ledger.map(x => `<tr><td>${trDay(x.date)}</td><td>${x.type === "charge" ? `${KIND_CHARGE[x.kind] || x.kind}${x.kind === "aidat" ? " · " + trPeriod(x.period) : ""}${x.note ? " · " + esc(x.note) : ""}` : `Ödeme · ${esc(S.dues.methods[x.method] || x.method)}${x.note ? " · " + esc(x.note) : ""} <span class="hint">${esc(x.user)}</span>`}</td>
           <td style="text-align:right">${x.type === "charge" ? TL(x.amount) : ""}</td><td style="text-align:right" class="ok">${x.type === "payment" ? TL(x.amount) : ""}</td><td style="text-align:right">${TL(x.balance)}</td>
-          <td style="text-align:right"><button data-ldel="${x.type}:${x.id}" aria-label="Kaydı sil" title="Yanlış kaydı sil">Sil</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Bu dairede hareket yok.</div>'}`;
+          <td style="text-align:right;white-space:nowrap">${x.type === "payment" ? (x.receipt ? `<a class="btn sm" href="/makbuz?id=${x.id}" target="_blank" rel="noopener">${esc(x.receipt)}</a> ` : `<button class="btn sm" data-mk="${x.id}">Makbuz</button> `) : ""}<button data-ldel="${x.type}:${x.id}" aria-label="Kaydı sil" title="Yanlış kaydı sil">Sil</button></td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">Bu dairede hareket yok.</div>'}`;
     $("#ldClose").onclick = () => { box.style.display = "none"; };
     bindRemind(box);
+    $$("[data-mk]", box).forEach(b => b.onclick = async () => {
+      try {
+        const r = await post("/api/dues/receipt", { payment_id: +b.dataset.mk });
+        window.open(r.url, "_blank", "noopener");
+        this.ledger(fid);
+      } catch (e) { alert(e.message); }
+    });
     $$("[data-ldel]", box).forEach(b => b.onclick = async () => {
       const [type, id] = b.dataset.ldel.split(":");
       if (!confirm(`Bu ${type === "charge" ? "borç" : "ödeme"} kaydı silinsin mi? Silme işlemi kayda geçer.`)) return;
       await post("/api/dues/delete", { type, id: +id }); await this.load(); this.ledger(fid);
     });
+  },
+  bankRender() {
+    const r = this.bank;
+    if (!r) return;
+    $("#biRes").innerHTML = `<div class="hint" style="margin-bottom:6px">${r.count} satır okundu. Eşleşmeyen satır için daire seçin.</div>
+      <div class="tablewrap"><table><thead><tr><th style="width:28px"><input type="checkbox" id="biAll" checked aria-label="Tümünü seç"></th><th>Tarih</th><th>Tutar</th><th>Açıklama</th><th>Daire</th></tr></thead><tbody>
+      ${r.rows.map((x, i) => `<tr><td><input type="checkbox" data-bi="${i}" ${x.flat_id ? "checked" : ""}></td><td>${trDay(x.date)}</td><td>${TL(x.amount)}</td>
+        <td class="hint">${esc(x.desc)}${x.why ? ` <span class="pill unk">${esc(x.why)}</span>` : ""}</td>
+        <td><select data-biflat="${i}"><option value="">– seçin –</option>${r.flats.map(f => `<option value="${f.id}" ${f.id === x.flat_id ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select></td></tr>`).join("")}
+      </tbody></table></div><div style="margin-top:10px"><button class="primary" id="biGo">Seçilenleri aktar</button></div>`;
+    $("#biAll").onchange = () => $$("[data-bi]").forEach(c => c.checked = $("#biAll").checked);
+    $("#biGo").onclick = () => this.bankApply();
+  },
+  async bankApply() {
+    if (!this.bank) { $("#biErr").textContent = "Önce ekstre önizlemesi alın."; return; }
+    const rows = [];
+    $$("[data-bi]").forEach(c => {
+      if (!c.checked) return;
+      const i = +c.dataset.bi, f = $(`[data-biflat="${i}"]`), src = this.bank.rows[i];
+      if (!f.value) return;
+      rows.push({ date: src.date, amount: src.amount, desc: src.desc, flat_id: +f.value });
+    });
+    if (!rows.length) { $("#biErr").textContent = "Aktarılacak satır seçin."; return; }
+    try {
+      const r = await post("/api/dues/bank/apply", { rows });
+      $("#biOk").textContent = `${r.count} ödeme aktarıldı · ${TL(r.total)}`;
+      $("#biRes").innerHTML = ""; this.bank = null; this.load();
+    } catch (e) { $("#biErr").textContent = e.message; }
   },
 };
 
@@ -2185,9 +2239,9 @@ PAGES.dairem = {
       <div class="facts"><div class="fact"><div class="l">Güncel bakiye</div><div class="v ${s.overdue > 0 ? "bad" : s.balance > 0 ? "warn" : "ok"}">${s.balance < 0 ? TL(-s.balance) + " alacaklı" : TL(s.balance)}</div></div>
         <div class="fact"><div class="l">Gecikmiş</div><div class="v ${s.overdue > 0 ? "bad" : "ok"}">${TL(s.overdue)}</div></div>
         <div class="fact"><div class="l">Toplam ödemeniz</div><div class="v">${TL(s.paid)}</div></div></div>
-      ${d.iban ? `<div class="info" id="payInfo">Ödeme: <b>${esc(d.account_name || site().site_name + " Yönetimi")}</b><br>IBAN: <span class="mono" style="font-size:14px">${esc(d.iban)}</span><br>Açıklamaya daire bilginizi yazın. Ödemeniz yönetim kaydettikten sonra burada görünür.</div>` : ""}
+      ${d.iban ? `<div class="info" id="payInfo">Ödeme: <b>${esc(d.account_name || site().site_name + " Yönetimi")}</b><br>IBAN: <span class="mono" style="font-size:14px">${esc(d.iban)}</span>${d.pay_url ? `<br>Online ödeme: <a href="${esc(d.pay_url)}" target="_blank" rel="noopener">ödeme bağlantısı</a>` : ""}<br>Açıklamaya daire bilginizi yazın. Ödemeniz yönetim kaydettikten sonra burada görünür.</div>` : ""}
       ${last.length ? `<h3>Son hareketler</h3><div class="tablewrap"><table><thead><tr><th>Tarih</th><th>Açıklama</th><th style="text-align:right">Tutar</th><th style="text-align:right">Bakiye</th></tr></thead><tbody>
-        ${last.map(x => `<tr><td>${trDay(x.date)}</td><td>${x.type === "charge" ? `${KIND_CHARGE[x.kind] || x.kind}${x.kind === "aidat" ? " · " + trPeriod(x.period) : ""}${x.note ? " · " + esc(x.note) : ""}` : `Ödemeniz · ${esc(methods[x.method] || x.method)}`}</td>
+        ${last.map(x => `<tr><td>${trDay(x.date)}</td><td>${x.type === "charge" ? `${KIND_CHARGE[x.kind] || x.kind}${x.kind === "aidat" ? " · " + trPeriod(x.period) : ""}${x.note ? " · " + esc(x.note) : ""}` : `Ödemeniz · ${esc(methods[x.method] || x.method)}${x.note ? " · " + esc(x.note) : ""}${x.receipt ? ` · <a href="/makbuz?id=${x.id}" target="_blank" rel="noopener">Makbuz ${esc(x.receipt)}</a>` : ""}`}</td>
           <td style="text-align:right" class="${x.type === "payment" ? "ok" : ""}">${x.type === "payment" ? "−" : ""}${TL(x.amount)}</td><td style="text-align:right">${TL(x.balance)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="hint">Henüz aidat hareketi yok.</div>'}</div>`;
   },
   render(el) {
@@ -2217,7 +2271,7 @@ PAGES.dairem = {
       <div class="v">${s.balance < 0 ? TL(-s.balance) + " <small>alacaklı</small>" : TL(s.balance)}</div>
       <div class="split">${s.overdue > 0 ? `<span class="over">${TL(s.overdue)} gecikmiş</span>` : `<span>Gecikme yok</span>`}<span>Bu ay: ${TL(r.dues.month_charged || 0)}</span></div>
       <div class="due">Son ödeme: her ayın ${r.dues.due_day}. günü${s.overdue > 0 && s.oldest_due ? ` · ${trDay(s.oldest_due)} tarihli ödeme gecikti` : ""}</div>
-      <div class="acts"><button class="pay" id="heroOpen">Ödeme bilgisi</button><button class="ghost" id="heroHist">Hareketler</button></div>
+      <div class="acts">${r.dues.pay_url ? `<a class="pay" href="${esc(r.dues.pay_url)}" target="_blank" rel="noopener" style="text-decoration:none">Ödeme yap</a>` : '<button class="pay" id="heroOpen">Ödeme bilgisi</button>'}<button class="ghost" id="heroHist">Hareketler</button></div>
     </div>` : "";
 
     $("#myBody").innerHTML = hero + `

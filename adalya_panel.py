@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.4"
+VERSION = "2.5"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS guest_passes (id INTEGER PRIMARY KEY, flat_id INTEGER
     valid_from TEXT, valid_to TEXT, created_by TEXT, ts REAL, used_ts REAL, used_by TEXT);
 CREATE TABLE IF NOT EXISTS packages (id INTEGER PRIMARY KEY, flat_id INTEGER, courier TEXT, note TEXT,
     ts_in REAL, ts_out REAL, user TEXT);
+CREATE TABLE IF NOT EXISTS receipts (id INTEGER PRIMARY KEY, no INTEGER, year INTEGER, payment_id INTEGER UNIQUE,
+    flat_id INTEGER, ts REAL, user TEXT);
 """
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1951,6 +1953,11 @@ def fold(s):
     return re.sub(r"[^a-z0-9]", "", str(s).translate(TR_FOLD).lower())
 
 
+def fold_words(s):
+    """Lowercase, Turkish letters folded, punctuation to spaces (keeps word boundaries)."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]", " ", str(s).translate(TR_FOLD).lower())).strip()
+
+
 def plate_key(p):
     return re.sub(r"[^A-Z0-9]", "", str(p).translate(TR_FOLD).upper())
 
@@ -2374,10 +2381,17 @@ def r_my(h, qs, user):
         f.pop("notes", None)
     conn = db()
     dues = {"state": dues_state(conn, [user["flat_id"]])[user["flat_id"]], "ledger": ledger(conn, user["flat_id"])} if f else None
+    if dues:
+        rc = receipt_map(conn)
+        for row in dues["ledger"]:
+            if row.get("type") == "payment":
+                v = rc.get(row["id"])
+                row["receipt"] = receipt_serial(*v) if v else ""
     conn.close()
     ds = get_setting("dues", DUES_DEFAULT)
     if dues:
-        dues.update(iban=ds["iban"], account_name=ds["account_name"], late_pct=ds["late_pct"], due_day=ds["due_day"])
+        dues.update(iban=ds["iban"], account_name=ds["account_name"], late_pct=ds["late_pct"], due_day=ds["due_day"],
+                    pay_url=ds.get("pay_url", ""))
     h.json(200, {"flat": f, "kinds": KINDS, "dues": dues, "methods": PAY_METHODS,
                  "requests": [{"id": r[0], "ts": r[1], "text": r[2], "status": r[3], "reply": r[4]} for r in reqs]})
 
@@ -2614,7 +2628,7 @@ def seed_demo_comms():
 
 # ---------------------------------------------------------------- settings stored in the database (data/, never committed)
 
-DUES_DEFAULT = {"mode": "esit", "amount": 0.0, "total": 0.0, "due_day": 10, "late_pct": 5.0, "iban": "", "account_name": ""}
+DUES_DEFAULT = {"mode": "esit", "amount": 0.0, "total": 0.0, "due_day": 10, "late_pct": 5.0, "iban": "", "account_name": "", "pay_url": ""}
 CAM_DEFAULT = {"enabled": False, "all": [], "blok": {}}
 
 
@@ -2743,6 +2757,11 @@ def r_dues_ledger(h, qs, user):
         raise ValueError("Daire seçin")
     conn = db()
     rows, st = ledger(conn, fid), dues_state(conn, [fid])[fid]
+    rc = receipt_map(conn)
+    for row in rows:
+        if row.get("type") == "payment":
+            v = rc.get(row["id"])
+            row["receipt"] = receipt_serial(*v) if v else ""
     conn.close()
     h.json(200, {"ledger": rows, "state": st})
 
@@ -2760,6 +2779,10 @@ def r_dues_settings(h, qs, user):
         raise ValueError("Son ödeme günü ve gecikme oranı sayı olmalı")
     d["iban"] = re.sub(r"\s+", " ", txt(b, "iban", 40).upper())
     d["account_name"] = txt(b, "account_name", 80)
+    pay_url = txt(b, "pay_url", 500)
+    if pay_url and not re.match(r"^https?://", pay_url):
+        raise ValueError("Ödeme bağlantısı http:// veya https:// ile başlamalı")
+    d["pay_url"] = pay_url
     put_setting("dues", d)
     audit(user, "Aidat ayarları", f"{'arsa payına göre' if d['mode'] == 'arsa' else 'eşit'} · {d['total'] if d['mode'] == 'arsa' else d['amount']} TL · son gün {d['due_day']}")
     h.json(200, {"ok": True, "settings": d})
@@ -2862,6 +2885,231 @@ def r_dues_pay(h, qs, user):
     h.json(200, {"ok": True, "count": n, "total": round(total, 2)})
 
 
+def receipt_serial(no, year):
+    return f"{year}-{no:05d}"
+
+
+def receipt_map(conn):
+    return {r[0]: (r[1], r[2]) for r in conn.execute("SELECT payment_id, no, year FROM receipts")}
+
+
+def ensure_receipt(conn, payment_id, user):
+    ex = conn.execute("SELECT no, year FROM receipts WHERE payment_id=?", (payment_id,)).fetchone()
+    if ex:
+        return ex[0], ex[1]
+    p = conn.execute("SELECT flat_id FROM payments WHERE id=?", (payment_id,)).fetchone()
+    if not p:
+        raise ValueError("Ödeme bulunamadı")
+    year = datetime.now().year
+    no = conn.execute("SELECT COALESCE(MAX(no),0) FROM receipts WHERE year=?", (year,)).fetchone()[0] + 1
+    conn.execute("INSERT INTO receipts (no, year, payment_id, flat_id, ts, user) VALUES (?,?,?,?,?,?)",
+                 (no, year, payment_id, p[0], time.time(), user["name"]))
+    return no, year
+
+
+@route("POST", "/api/dues/receipt", need="admin")
+def r_dues_receipt(h, qs, user):
+    pid = h.body().get("payment_id")
+    conn = db()
+    no, year = ensure_receipt(conn, pid, user)
+    conn.commit()
+    conn.close()
+    audit(user, "Makbuz", f"Ödeme {pid} · {receipt_serial(no, year)}")
+    h.json(200, {"ok": True, "serial": receipt_serial(no, year), "url": f"/makbuz?id={pid}"})
+
+
+@route("GET", "/makbuz", need="user")
+def r_makbuz(h, qs, user):
+    import html as html_lib
+    pid = qs.get("id")
+    conn = db()
+    p = conn.execute("SELECT p.id, p.flat_id, p.date, p.amount, p.method, p.note, f.blok, f.daire FROM payments p "
+                     "LEFT JOIN flats f ON f.id=p.flat_id WHERE p.id=?", (pid,)).fetchone()
+    if not p:
+        conn.close()
+        raise ValueError("Ödeme bulunamadı")
+    if user["role"] == "resident" and p[1] != user.get("flat_id"):
+        conn.close()
+        return h.json(403, {"error": "Bu makbuz size ait değil"})
+    if user["role"] == "staff":
+        conn.close()
+        return h.json(403, {"error": "Makbuzlar güvenlik rolüne kapalı"})
+    rc = conn.execute("SELECT no, year FROM receipts WHERE payment_id=?", (pid,)).fetchone()
+    if not rc:
+        if user["role"] != "admin":
+            conn.close()
+            raise ValueError("Bu ödeme için makbuz düzenlenmemiş")
+        no, year = ensure_receipt(conn, pid, user)
+        conn.commit()
+        rc = (no, year)
+    conn.close()
+    serial = receipt_serial(rc[0], rc[1])
+    amount = f"{p[3]:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    try:
+        pay_date = datetime.strptime(str(p[2]), "%Y-%m-%d").strftime("%d.%m.%Y")
+    except (TypeError, ValueError):
+        pay_date = str(p[2])
+    flat = flat_label({"blok": p[6], "daire": p[7]})
+    method = PAY_METHODS.get(p[4], p[4])
+    note = html_lib.escape(p[5] or "—")
+    body = f"""<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Makbuz {serial}</title>
+<style>
+body{{font:14px/1.65 "Segoe UI",sans-serif;color:#1b1e23;max-width:640px;margin:48px auto;padding:0 22px}}
+.serial{{font-family:Consolas,monospace;font-size:15px;font-weight:700;letter-spacing:.04em}}
+h1{{font-size:20px;margin:6px 0 2px}} .sub{{color:#6b7280;font-size:13px}}
+table{{width:100%;border-collapse:collapse;margin:20px 0}} td{{padding:8px 0;border-bottom:1px solid #e5e2da}}
+td.r{{text-align:right}} .big{{font-size:20px;font-weight:700}}
+.note{{color:#6b7280;font-size:12px;margin-top:18px}}
+.sig{{margin-top:54px;border-top:1px solid #9a9a9a;width:250px;padding-top:6px;font-size:12px;color:#6b7280}}
+.print{{margin-top:26px;padding:9px 16px;border:0;border-radius:8px;background:#1b1e23;color:#fff;font-size:14px;cursor:pointer}}
+@media print{{.print{{display:none}} body{{margin:0}}}}
+</style></head><body>
+<div class="serial">Makbuz {serial}</div>
+<h1>{html_lib.escape(site["site_name"])} · Aidat Makbuzu</h1>
+<div class="sub">{html_lib.escape(flat)} · {pay_date} tarihli ödeme</div>
+<table>
+<tr><td>Tutar</td><td class="r big">{amount} TL</td></tr>
+<tr><td>Ödeme türü</td><td class="r">{html_lib.escape(method)}</td></tr>
+<tr><td>Açıklama</td><td class="r">{note}</td></tr>
+<tr><td>Makbuz tarihi</td><td class="r">{datetime.now().strftime('%d.%m.%Y %H:%M')}</td></tr>
+</table>
+<div class="note">Bu makbuz {html_lib.escape(site["site_name"])} yönetimi tarafından düzenlenmiştir. Kişisel veri içerir; yalnızca ilgili daire ve yönetim saklar.</div>
+<div class="sig">Yönetim imza / kaşe</div>
+<button class="print" onclick="window.print()">Yazdır / PDF olarak kaydet</button>
+</body></html>"""
+    h.raw(200, body.encode("utf-8"), "text/html; charset=utf-8")
+
+
+def read_text_payload(b):
+    import base64
+    raw = str(b.get("data") or "")
+    m = re.match(r"^data:[^;]*;base64,(.*)$", raw, re.S)
+    if m:
+        try:
+            raw = base64.b64decode(m.group(1), validate=False)
+        except (ValueError, TypeError):
+            raise ValueError("Dosya okunamadı")
+    else:
+        raw = raw.encode("utf-8")
+    for enc in ("utf-8-sig", "cp1254", "latin-1"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("Dosya okunamadı")
+
+
+def norm_bank_date(s):
+    s = str(s).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def parse_bank_csv(text):
+    sample = text[:4000]
+    delim = ";" if sample.count(";") >= sample.count(",") else ","
+    rows = [[c.strip() for c in r] for r in csv.reader(io.StringIO(text), delimiter=delim)]
+    rows = [r for r in rows if any(c for c in r)]
+    if not rows:
+        raise ValueError("Dosya boş")
+    names = {"date": ("tarih", "date"), "amount": ("tutar", "amount", "miktar"),
+             "desc": ("aciklama", "açıklama", "description", "detay")}
+    header = [fold(c) for c in rows[0]]
+    idx = {}
+    for key, keys in names.items():
+        for i, h in enumerate(header):
+            if any(k in h for k in keys):
+                idx[key] = i
+                break
+    data = rows[1:] if len(idx) == 3 else rows
+    if len(idx) != 3:
+        idx = {"date": 0, "amount": 1, "desc": 2}
+    out = []
+    for r in data:
+        if max(idx.values()) >= len(r):
+            continue
+        try:
+            amt = money(r[idx["amount"]], "Tutar")
+        except ValueError:
+            continue
+        if amt <= 0:
+            continue
+        out.append({"date": norm_bank_date(r[idx["date"]]), "amount": amt,
+                    "desc": r[idx["desc"]] if idx["desc"] < len(r) else ""})
+    if not out:
+        raise ValueError("Tarih/tutar/açıklama satırı bulunamadı")
+    return out
+
+
+def match_flat(conn, desc):
+    text = fold_words(desc)
+    pk = plate_key(desc)
+    if len(pk) >= 5:
+        r = conn.execute("SELECT flat_id FROM vehicles WHERE plate_key LIKE ? LIMIT 1", (f"%{pk}%",)).fetchone()
+        if r:
+            return r[0], "plaka"
+    m = re.search(r"\b([abc])\s+blok\s+(\d{1,2})\b", text)
+    if m:
+        r = conn.execute("SELECT id FROM flats WHERE lower(blok)=? AND daire=?", (m.group(1), m.group(2))).fetchone()
+        if r:
+            return r[0], "daire"
+    m = re.search(r"\bdaire\s*[-:]?\s*(\d{1,2})\b", text)
+    if m:
+        rs = conn.execute("SELECT id FROM flats WHERE daire=?", (m.group(1),)).fetchall()
+        if len(rs) == 1:
+            return rs[0][0], "daire"
+    for r in conn.execute("SELECT DISTINCT flat_id, name FROM people WHERE COALESCE(move_out,'')=''"):
+        parts = [p for p in fold_words(r[1]).split() if len(p) >= 3]
+        if parts and all(p in text.split() for p in parts):
+            return r[0], "isim"
+    return None, ""
+
+
+@route("POST", "/api/dues/bank/preview", need="admin")
+def r_bank_preview(h, qs, user):
+    text = read_text_payload(h.body(max_bytes=5_000_000))
+    rows = parse_bank_csv(text)
+    conn = db()
+    flats = {r[0]: flat_label({"blok": r[1], "daire": r[2]}) for r in conn.execute("SELECT id, blok, daire FROM flats")}
+    out = []
+    for r in rows[:200]:
+        fid, why = match_flat(conn, r["desc"])
+        out.append({**r, "flat_id": fid, "flat": flats.get(fid, ""), "why": why})
+    conn.close()
+    h.json(200, {"rows": out, "count": len(out),
+                 "flats": [{"id": k, "label": v} for k, v in sorted(flats.items())]})
+
+
+@route("POST", "/api/dues/bank/apply", need="admin")
+def r_bank_apply(h, qs, user):
+    rows = h.body().get("rows") or []
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("Aktarılacak satır yok")
+    conn = db()
+    n, total = 0, 0.0
+    for r in rows[:200]:
+        try:
+            fid, amt = int(r.get("flat_id")), money(r.get("amount"), "Tutar")
+        except (TypeError, ValueError):
+            continue
+        date = opt_date(r, "date") or datetime.now().strftime("%Y-%m-%d")
+        if not fid or amt <= 0 or not conn.execute("SELECT 1 FROM flats WHERE id=?", (fid,)).fetchone():
+            continue
+        desc = str(r.get("desc") or "")[:120]
+        conn.execute("INSERT INTO payments (flat_id, date, amount, method, note, user, ts) VALUES (?,?,?,?,?,?,?)",
+                     (fid, date, amt, "havale", ("Banka: " + desc)[:200], user["name"], time.time()))
+        n += 1
+        total += amt
+    conn.commit()
+    conn.close()
+    audit(user, "Banka içe aktarımı", f"{n} ödeme · {round(total, 2)} TL")
+    h.json(200, {"ok": True, "count": n, "total": round(total, 2)})
+
+
 @route("POST", "/api/dues/delete", need="admin")
 def r_dues_delete(h, qs, user):
     b = h.body()
@@ -2872,6 +3120,8 @@ def r_dues_delete(h, qs, user):
     r = conn.execute(f"SELECT flat_id, amount FROM {table} WHERE id=?", (b.get("id"),)).fetchone()
     if r:
         conn.execute(f"DELETE FROM {table} WHERE id=?", (b.get("id"),))
+        if table == "payments":
+            conn.execute("DELETE FROM receipts WHERE payment_id=?", (b.get("id"),))
         conn.commit()
     conn.close()
     if not r:

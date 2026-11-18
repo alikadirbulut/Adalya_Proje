@@ -1,4 +1,4 @@
-"""Smoke tests for Adalya Paneli roles, registry, import, plate lookup and device inventory.
+﻿"""Smoke tests for Adalya Paneli roles, registry, import, plate lookup and device inventory.
 
 Run against a DEMO server only (it adds and deletes test records; the demo works on copies in data-demo/,
 so the real devices.json and site.json are not touched). Start a fresh demo for each run:
@@ -295,6 +295,41 @@ check("backup downloads as zip", c == 200 and zdata[:2] == b"PK", c)
 check("backup settings saved", call("/api/backups/settings", "admin", {"auto": False, "hour": 4, "keep": 5})[0] == 200)
 check("restore needs confirmation", call("/api/backups/restore", "admin", {"name": bk["name"], "confirm": "yanlis"})[0] == 400)
 
+# ---------------------------------------------------------------- payment link, receipts, bank import
+c, du = call("/api/dues")
+s = du["settings"]
+base_settings = {"mode": s["mode"], "amount": s["amount"], "total": s["total"], "due_day": s["due_day"],
+                 "late_pct": s["late_pct"], "iban": s["iban"], "account_name": s["account_name"]}
+check("dues settings accepts payment link",
+      call("/api/dues/settings", "admin", {**base_settings, "pay_url": "https://bank.example/pay"})[0] == 200)
+c, my = call("/api/my", "resident")
+check("resident sees payment link", my["dues"]["pay_url"] == "https://bank.example/pay", my["dues"].get("pay_url"))
+check("settings rejects non-http payment link",
+      call("/api/dues/settings", "admin", {**base_settings, "pay_url": "javascript:alert(1)"})[0] == 400)
+
+check("record payment for receipt", call("/api/dues/pay", "admin", {"flat_ids": [1], "amount": "100", "date": "2026-11-18", "method": "nakit"})[0] == 200)
+c, led = call("/api/dues/ledger?flat_id=1")
+pay = next((x for x in led["ledger"] if x["type"] == "payment" and x["amount"] == 100), None)
+c, rc = call("/api/dues/receipt", "admin", {"payment_id": pay["id"]})
+check("receipt issued with serial", c == 200 and len(rc["serial"]) >= 7, rc)
+c, page = call("/makbuz?id=" + str(pay["id"]), "admin")
+check("receipt page renders", c == 200 and b"Makbuz" in page and rc["serial"].encode() in page, c)
+check("resident can open own receipt", call("/makbuz?id=" + str(pay["id"]), "resident")[0] == 200)
+check("staff cannot open receipts", call("/makbuz?id=" + str(pay["id"]), "staff")[0] == 403)
+check("delete payment removes receipt", call("/api/dues/delete", "admin", {"type": "payment", "id": pay["id"]})[0] == 200)
+c, led = call("/api/dues/ledger?flat_id=1")
+check("receipt gone with payment", not any(x["type"] == "payment" and x["id"] == pay["id"] for x in led["ledger"]))
+
+bank_csv = "Tarih;Tutar;Açıklama\n18.11.2026;1500,00;A BLOK 1 kasım aidat\n18.11.2026;500,00;07 XYZ 99 plaka\n"
+data = "data:text/csv;base64," + base64.b64encode(bank_csv.encode("utf-8")).decode()
+c, pv = call("/api/dues/bank/preview", "admin", {"data": data})
+check("bank preview parses CSV", c == 200 and pv["count"] == 2, pv)
+row0 = pv["rows"][0] if c == 200 and pv["rows"] else {}
+check("bank preview matches flat and amount", row0.get("flat_id") == 1 and row0.get("amount") == 1500.0, row0)
+c, ap = call("/api/dues/bank/apply", "admin", {"rows": [{"date": "2026-11-18", "amount": 1500, "desc": "A BLOK 1 kasım aidat", "flat_id": 1}]})
+check("bank apply records payment", c == 200 and ap["count"] == 1, ap)
+check("bank apply rejects empty rows", call("/api/dues/bank/apply", "admin", {"rows": []})[0] == 400)
+
 # audit trail
 c, au = call("/api/audit")
 acts = {a["action"] for a in au["audit"]}
@@ -308,3 +343,4 @@ check("backup restore succeeds", c == 200, rr)
 check("panel still responds after restore", call("/api/status", "admin")[0] == 200)
 print(f"\n{ok} passed, {fail} failed")
 sys.exit(1 if fail else 0)
+
