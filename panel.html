@@ -386,8 +386,19 @@ html[data-theme="dark"] {
 .ann h2 { font-size: 15.5px; }
 .ann .ann-meta { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .ann .ann-body { white-space: pre-wrap; font-size: 14px; }
-/* command palette */
-.palette { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; background: rgba(10, 12, 14, .38); }
+/* vardiya wall size, enlarged view, group badges */
+#shiftCams { grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); }
+.feed { cursor: pointer; }
+.feed:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.navgroup .gnb { margin-left: auto; margin-right: 8px; background: var(--bad-bg); color: var(--bad); font-size: 10.5px; font-weight: 700; padding: 0 6px; border-radius: 10px; line-height: 1.6; }
+.shiftbig { position: fixed; inset: 0; z-index: 95; background: rgba(0, 0, 0, .88); display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.shiftbig[hidden] { display: none; }
+.shiftbig .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #fff; }
+.shiftbig .bar b { font-size: 15px; }
+.shiftbig img { width: 100%; height: calc(100% - 46px); object-fit: contain; background: #000; border-radius: 10px; }
+.shiftbig button { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .3); }
+
+/* command palette */.palette { position: fixed; inset: 0; z-index: 90; display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; background: rgba(10, 12, 14, .38); }
 .palette.on { display: flex; }
 .palette-box { width: min(640px, 92vw); background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .55); overflow: hidden; }
 .palette-box input { width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 15px 17px; font-size: 16px; background: var(--card); }
@@ -612,6 +623,7 @@ function render() {
   timers.forEach(clearInterval); timers = [];
   S.editing = false; S.live.big = null;
   document.onkeydown = null; document.onfullscreenchange = null;
+  const sb = $("#shiftBig"); if (sb) sb.hidden = true;
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   const { page, params } = parseHash();
   S.page = page;
@@ -634,9 +646,31 @@ function head(title, sub, right = "") {
 
 function updateAnnBadge() {
   const b = $('[data-badge="duyurular"]');
-  if (!b) return;
-  const n = S.me?.user?.unread || 0;
-  b.innerHTML = n ? `<span class="nb">${n}</span>` : "";
+  if (b) {
+    const n = S.me?.user?.unread || 0;
+    b.innerHTML = n ? `<span class="nb">${n}</span>` : "";
+  }
+  if (typeof updateGroupBadges === "function") updateGroupBadges();
+}
+
+function updateGroupBadges() {
+  $$(".navsec").forEach(sec => {
+    const btn = sec.querySelector(".navgroup"); if (!btn) return;
+    let total = 0, alert = false;
+    $$(".nb", sec).forEach(b => {
+      const t = (b.textContent || "").trim();
+      const n = parseInt(t, 10);
+      if (!isNaN(n)) total += n; else if (t) alert = true;
+    });
+    let pill = btn.querySelector(".gnb");
+    if (!pill) {
+      pill = document.createElement("span");
+      pill.className = "gnb";
+      btn.insertBefore(pill, btn.querySelector("svg"));
+    }
+    pill.textContent = total ? String(total) : alert ? "!" : "";
+    pill.style.display = (total || alert) ? "" : "none";
+  });
 }
 
 async function poll() {
@@ -653,6 +687,9 @@ async function poll() {
     if (nb) nb.innerHTML = S.status.nvr.connected ? "" : '<span class="nb">!</span>';
     const rb = $('[data-badge="kayittalepleri"]');
     if (rb) rb.innerHTML = (S.me.user.pending_regs || 0) ? `<span class="nb">${S.me.user.pending_regs}</span>` : "";
+    const ob = $('[data-badge="talepler"]');
+    if (ob) ob.innerHTML = (S.me.user.open_requests || 0) ? `<span class="nb">${S.me.user.open_requests}</span>` : "";
+    updateGroupBadges();
     if (!S.dragging) PAGES[S.page].onStatus?.();
   } catch (e) {
     const ld = $("#liveDot"), lt = $("#liveText");
@@ -938,9 +975,14 @@ PAGES.genel = {
 
 /* Bugün is the new name of the old Genel bakış: same page id, task-first layout. */
 
+const SHIFT_KEY = "adalya.shift.size";
+const shiftSizeLoad = () => { try { const v = +localStorage.getItem(SHIFT_KEY); return [4, 6, 8, 10].includes(v) ? v : 6; } catch { return 6; } };
+const shiftSizeSave = v => { try { localStorage.setItem(SHIFT_KEY, String(v)); } catch {} };
+
 PAGES.vardiya = {
   render(el) {
     const n = S.status?.nvr || {};
+    this.size = shiftSizeLoad();
     el.innerHTML = `
       <div class="pagehead">
         <div><h1>Vardiya ekranı</h1><div class="sub">${esc(todayTR())} · plaka sorgula, kameraları izle</div></div>
@@ -965,8 +1007,10 @@ PAGES.vardiya = {
           <div class="card"><div class="card-h"><h2>Kargolar</h2><span class="hint">Son 24 saat</span></div><div id="shiftPkgs"><div class="empty">Yükleniyor…</div></div></div>
           <div class="card"><div class="card-h"><h2>Son ziyaretçiler</h2><a href="#/ziyaret">Tümü</a></div><div id="shiftVis"><div class="empty">Yükleniyor…</div></div></div>
         </div>
-        <div class="card"><div class="card-h"><h2>Kameralar</h2><a href="#/canli">Tümünü göster</a></div>
-          ${n.connected ? '<div class="feedgrid" id="shiftCams"></div>' : '<div class="empty">NVR bağlı değil. Canlı görüntü için yönetici Ayarlar’dan bağlanmalı.</div>'}
+        <div class="card"><div class="card-h"><h2>Kameralar</h2><div class="r" style="display:flex;align-items:center;gap:10px">
+          <span class="seg" id="shiftSize">${[4, 6, 8, 10].map(v => `<button data-v="${v}" class="${v === this.size ? "on" : ""}">${v}</button>`).join("")}</span>
+          <a href="#/canli">Tümünü göster</a></div></div>
+          ${n.connected ? '<div class="feedgrid" id="shiftCams" style="--cols:3"></div>' : '<div class="empty">NVR bağlı değil. Canlı görüntü için yönetici Ayarlar’dan bağlanmalı.</div>'}
         </div>
       </div>`;
     $("#plGo").onclick = () => this.lookup();
@@ -988,6 +1032,12 @@ PAGES.vardiya = {
       } catch (e) { $("#qgErr").textContent = e.message; }
     };
     if (n.connected) { this.loadCams(); every(() => this.loadCams(), 4000); }
+    $$("#shiftSize button").forEach(b => b.onclick = () => {
+      this.size = +b.dataset.v;
+      shiftSizeSave(this.size);
+      $$("#shiftSize button").forEach(x => x.classList.toggle("on", x === b));
+      this.loadCams();
+    });
     this.loadVisitors();
     this.loadPasses();
     this.loadPackages();
@@ -1021,10 +1071,44 @@ PAGES.vardiya = {
   },
   loadCams() {
     const box = $("#shiftCams"); if (!box) return;
-    box.innerHTML = cams().slice(0, 6).map(c => {
+    const cols = this.size <= 4 ? 2 : this.size <= 6 ? 3 : this.size <= 8 ? 4 : 5;
+    box.style.setProperty("--cols", cols);
+    box.innerHTML = cams().slice(0, this.size).map(c => {
       const live = c.up !== false;
-      return `<div class="feed"><img src="/api/nvr/snapshot?ch=${c.channel}" alt="${esc(c.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="offline" style="display:none">Görüntü yok</div><div class="nm ${live ? "" : "bad"}"><span>${esc(c.name)}</span><span><i></i>${live ? "Canlı" : "Kapalı"}</span></div></div>`;
+      return `<div class="feed" data-ch="${c.channel}"><img src="/api/nvr/snapshot?ch=${c.channel}" alt="${esc(c.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="offline" style="display:none">Görüntü yok</div><div class="nm ${live ? "" : "bad"}"><span>${esc(c.name)}</span><span><i></i>${live ? "Canlı" : "Kapalı"}</span></div></div>`;
     }).join("");
+    $$("#shiftCams .feed").forEach(el => el.onclick = () => this.openBig(+el.dataset.ch));
+  },
+  openBig(ch) {
+    const c = cams().find(x => x.channel === ch); if (!c) return;
+    let box = $("#shiftBig");
+    if (!box) {
+      document.body.insertAdjacentHTML("beforeend",
+        `<div class="shiftbig" id="shiftBig" hidden><div class="bar"><b id="sbName"></b><span id="sbInfo" class="hint"></span><button id="sbClose">Kapat (Esc)</button></div><img id="sbImg" alt=""></div>`);
+      box = $("#shiftBig");
+      $("#sbClose").onclick = () => this.closeBig();
+    }
+    this.big = ch;
+    box.hidden = false;
+    $("#sbName").textContent = c.name;
+    $("#sbInfo").textContent = `${c.channel}. kanal · ${statusText(c)}`;
+    this.refreshBig();
+    clearInterval(this.bigTimer);
+    this.bigTimer = setInterval(() => this.refreshBig(), 900);
+    timers.push(this.bigTimer);
+    document.onkeydown = e => { if (e.key === "Escape") this.closeBig(); };
+  },
+  refreshBig() {
+    const img = $("#sbImg"), c = cams().find(x => x.channel === this.big);
+    if (!img || !c) return;
+    img.src = `/api/nvr/snapshot?ch=${c.channel}&t=${Date.now()}`;
+  },
+  closeBig() {
+    clearInterval(this.bigTimer);
+    timers = timers.filter(t => t !== this.bigTimer);
+    this.big = null;
+    const box = $("#shiftBig"); if (box) box.hidden = true;
+    document.onkeydown = null;
   },
   async loadVisitors() {
     try {
@@ -1923,7 +2007,7 @@ PAGES.kayittalepleri = {
     this.load();
   },
   async load() {
-    try { this.data = await api("/api/registrations"); this.draw(); }
+    try { this.data = await api("/api/registrations"); S.me.user.pending_regs = this.data.pending; updateGroupBadges(); this.draw(); }
     catch (e) { $("#rgBody").innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; }
   },
   draw() {
@@ -2537,7 +2621,7 @@ PAGES.talepler = {
     this.load();
   },
   async load() {
-    try { const r = await api("/api/requests"); this.data = r.requests; this.draw(); }
+    try { const r = await api("/api/requests"); this.data = r.requests; S.me.user.open_requests = this.data.filter(q => q.status === "acik").length; updateGroupBadges(); this.draw(); }
     catch (e) { $("#tqList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
   draw() {

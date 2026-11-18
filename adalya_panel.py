@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "2.8"
+VERSION = "2.9"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -571,7 +571,7 @@ def r_me(h, qs, user):
     if user and user["role"] == "resident":
         user = {**user, "cams": len(allowed_channels(user.get("flat_id"))), "unread": unread_announcements(user["username"])}
     if user and user["role"] == "admin":
-        user = {**user, "pending_regs": pending_registrations()}
+        user = {**user, "pending_regs": pending_registrations(), "open_requests": open_requests()}
     h.json(200, {"setup_needed": not args.demo and not admins(), "user": user, "demo": args.demo,
                  "site": site_payload(bool(user)), "version": VERSION, "lan": args.lan})
 
@@ -2005,6 +2005,13 @@ def unread_announcements(username):
 def pending_registrations():
     conn = db()
     n = conn.execute("SELECT COUNT(*) FROM registrations WHERE status='bekliyor'").fetchone()[0]
+    conn.close()
+    return n
+
+
+def open_requests():
+    conn = db()
+    n = conn.execute("SELECT COUNT(*) FROM requests WHERE status='acik'").fetchone()[0]
     conn.close()
     return n
 
