@@ -522,7 +522,7 @@ PAGES.genel = {
    scheduler: after the first load of the page, one refresh every LIVE_TICK ms (about
    1.4 per second, whatever the grid size) and never more than LIVE_MAX_INFLIGHT open
    requests, so 32 tiles cost the NVR no more than 8 do; each tile just refreshes less often. */
-const LIVE_SIZES = [8, 16, 32], LIVE_KEY = "adalya.live.size", LIVE_MAX_INFLIGHT = 2, LIVE_TICK = 700;
+const LIVE_SIZES = [8, 16, 32], LIVE_KEY = "adalya.live.size", LIVE_MAX_INFLIGHT = 2, LIVE_TICK = 700, BIG_MAX_FPS = 4;
 function liveSizeLoad() { try { const v = +localStorage.getItem(LIVE_KEY); return LIVE_SIZES.includes(v) ? v : 16; } catch { return 16; } }
 function liveSizeSave(v) { try { localStorage.setItem(LIVE_KEY, String(v)); } catch {} }
 
@@ -572,7 +572,7 @@ PAGES.canli = {
     el.innerHTML = head("Canlı izleme", "NVR'den anlık görüntüler") + '<div id="liveBody"></div>';
     if (!n?.connected) { $("#liveBody").innerHTML = nvrMissing("Canlı görüntü"); return; }
     const L = S.live;
-    L.size = L.size || liveSizeLoad(); L.page = L.page || 0; L.inflight = 0; L.bigBusy = false; L.cursor = 0;
+    L.size = L.size || liveSizeLoad(); L.page = L.page || 0; L.inflight = 0; L.bigBusy = false; L.cursor = 0; clearTimeout(L.bigTimer); L.bigWaiting = false;
     $("#liveBody").innerHTML = `
       <div id="liveWrap">
         <div class="livebar">
@@ -586,10 +586,10 @@ PAGES.canli = {
           <div id="liveGrid"></div>
           <div id="liveBig" role="dialog" aria-label="Büyük görüntü">
             <img id="bigImg" alt="">
-            <div class="bigbar"><b id="bigTitle"></b><span style="display:flex;gap:6px">${isResident() ? "" : '<a class="btn" id="bigRec">Kayıtları aç</a>'}<button id="bigClose">Kapat (Esc)</button></span></div>
+            <div class="bigbar"><span><b id="bigTitle"></b> <span id="bigFps" style="opacity:.75;font-size:12px;margin-left:6px"></span></span><span style="display:flex;gap:6px">${isResident() ? "" : '<a class="btn" id="bigRec">Kayıtları aç</a>'}<button id="bigClose">Kapat (Esc)</button></span></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek). Bir kareye tıklayınca büyür; büyük görüntü yaklaşık 1,5 saniyede bir yenilenir. ← → ile sayfa değişir. Akıcı video için NVR arayüzünü kullanın.</div>
+        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek). Bir kareye tıklayınca büyür; büyük görüntü saniyede ${BIG_MAX_FPS} kareye kadar sürekli yenilenir (hız NVR'ye ve kameranın bağlantısına bağlıdır), bu sırada küçük kareler bekler. ← → ile sayfa değişir. Ses ve akıcı video için NVR arayüzünü kullanın.</div>
       </div>`;
     $$("#liveSize [data-size]").forEach(b => b.onclick = () => {
       const first = this.pageCams()[0]?.channel;
@@ -616,7 +616,7 @@ PAGES.canli = {
     if (ch) { const i = cams().findIndex(c => c.channel === ch); if (i >= 0) L.page = Math.floor(i / L.size); }
     this.build();
     every(() => this.tick(), 150);
-    every(() => this.refreshBig(), 1500);
+    every(() => { if (!S.live.bigBusy && !S.live.bigWaiting) this.refreshBig(); }, 1500);
     if (ch) this.openBig(ch);
   },
   pages() { return Math.max(1, Math.ceil(cams().length / S.live.size)); },
@@ -694,13 +694,31 @@ PAGES.canli = {
     if ($("#bigRec")) $("#bigRec").href = "#/kayitlar?ch=" + ch;
     const cur = $(`.ltile[data-ch="${ch}"] img`);
     $("#bigImg").src = cur ? cur.src : "";
+    S.live.bigFrames = []; if ($("#bigFps")) $("#bigFps").textContent = "";
     this.refreshBig();
   },
-  closeBig() { S.live.big = null; const b = $("#liveBig"); if (b) b.style.display = "none"; },
+  closeBig() { const L = S.live; L.big = null; clearTimeout(L.bigTimer); L.bigWaiting = false; const b = $("#liveBig"); if (b) b.style.display = "none"; },
+  /* Enlarged view: continuous snapshots. The next picture is requested as soon as the previous one has
+     arrived (one request at a time, at most BIG_MAX_FPS per second), so a fast NVR gives a near-live
+     picture and a slow camera simply gets fewer frames. The grid is paused meanwhile, so the NVR load
+     stays about the same as the grid's. A 1.5 s watchdog in render() restarts the loop after a pause. */
   refreshBig() {
-    const L = S.live; if (!L.big || L.bigBusy || document.hidden) return;
-    L.bigBusy = true; const ch = L.big;
-    this.snap(ch, (ok, img) => { L.bigBusy = false; if (ok && L.big === ch && $("#bigImg")) $("#bigImg").src = img.src; });
+    const L = S.live; if (!L.big || L.bigBusy || document.hidden || S.page !== "canli") return;
+    clearTimeout(L.bigTimer); L.bigWaiting = false;
+    L.bigBusy = true; const ch = L.big, t0 = performance.now();
+    this.snap(ch, (ok, img) => {
+      L.bigBusy = false;
+      if (L.big !== ch || !$("#bigImg")) return;
+      if (ok) {
+        $("#bigImg").src = img.src;
+        const now = performance.now(); L.bigFrames = (L.bigFrames || []).filter(t => now - t < 3000); L.bigFrames.push(now);
+        const fps = L.bigFrames.length > 1 ? (L.bigFrames.length - 1) / ((now - L.bigFrames[0]) / 1000) : 0;
+        const f = $("#bigFps"); if (f) f.textContent = fps ? fps.toLocaleString("tr-TR", { maximumFractionDigits: 1 }) + " kare/sn" : "";
+      }
+      const wait = ok ? Math.max(0, 1000 / BIG_MAX_FPS - (performance.now() - t0)) : 2000;
+      L.bigWaiting = true;
+      L.bigTimer = setTimeout(() => { L.bigWaiting = false; this.refreshBig(); }, wait);
+    });
   },
   onStatus() { for (const c of cams()) { const d = $(`[data-cdot="${c.channel}"]`); if (d) d.className = "dot " + level(c); } },
 };

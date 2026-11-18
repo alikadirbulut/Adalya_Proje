@@ -162,7 +162,7 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 |---|---|---|---|
 | Genel bakış | NVR disk shows a % (not "?") | ☐ | |
 | Canlı izleme | Tiles show pictures | ☐ | |
-| Canlı izleme | Click a tile → large view refreshes | ☐ | |
+| Canlı izleme | Click a tile → large view updates continuously; frame rate shown next to the name: ____ kare/sn (good camera) / ____ kare/sn (Güney çevre 1) | ☐ | |
 | Kayıtlar | Güney çevre 1, today, **Kayıtları bul** → files listed | ☐ | |
 | Kayıtlar | **İndir** one file, open in Dahua SmartPlayer / VLC | ☐ | |
 | Olaylar ve loglar | **Logları getir** → NVR log lines | ☐ | |
@@ -172,17 +172,47 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 
 If something fails, run `python adalya_test.py nvr --user admin` and bring back the `results/nvr-*` folder; it shows exactly what the NVR answers.
 
-### 2.4 Map
+### 2.4 Live video: what does the NVR offer? (15 min)
+These three tests decide how real live video gets into the panel (smooth video through a small media server such as go2rtc, or the NVR's own MJPEG stream). Nothing is changed on the NVR; only read.
+
+Use the **view-only NVR user** from 2.2 for these tests, not the admin account. Pick one good camera (e.g. channel 3, Güvenlik) and one weak one (channel 9, Güney çevre 1).
+
+1. [ ] **RTSP sub stream in VLC** (Media → Open Network Stream):
+   ```
+   rtsp://<user>:<password>@192.168.0.23:554/cam/realmonitor?channel=3&subtype=1
+   ```
+   Plays? ☐ yes ☐ no. Delay vs. reality (wave at the camera): ____ s. Same for channel 9: ☐ plays, delay ____ s.
+   If it doesn't play, try `subtype=0` (main stream) and note the result: ____
+   Afterwards clear VLC's recent media list (Media → Open Recent → Clear), since it stores the URL with the password.
+2. [ ] **Codecs** (NVR → Camera → Encode, or VLC → Tools → Codec Information while playing). Note for 3–4 cameras:
+
+   | Channel | Main stream codec / resolution / FPS / bitrate | Sub stream codec / resolution / FPS / bitrate |
+   |---|---|---|
+   | 3 | | |
+   | 9 | | |
+   | | | |
+   | | | |
+
+   Browsers play **H.264** reliably, H.265 only on some devices. Target: main stream H.265 (recording, saves Wi-Fi), **sub stream H.264**, about 640×360–704×576, 10–15 FPS, 256–512 kbps. Don't change it today unless asked; just note what is there and whether the sub stream codec can be set to H.264 (☐ yes ☐ no) and to MJPEG (☐ yes ☐ no).
+3. [ ] **MJPEG in a browser** (the browser asks for the NVR login):
+   ```
+   http://192.168.0.23/cgi-bin/mjpg/video.cgi?channel=3&subtype=1
+   ```
+   Moving picture? ☐ yes ☐ only one frame / error ☐ asks for login, then error. Message shown: ____________
+4. [ ] NVR → Network → Port: RTSP port is 554? ☐ (other: ____). Max. remote/online users setting: ____
+5. [ ] On the NVR **Info → BPS** screen, note the total incoming bitrate while the VLC stream from test 1 is playing: ____ Mbps.
+
+### 2.5 Map
 - [ ] **Site haritası → Haritayı düzenle**: drag each camera to its real spot during the site walk (1.6).
 - [ ] Put the block labels back (Ayarlar → Site ve harita → Etiket ekle: A blok, B blok, C blok, Bahçe, Havuz, Otopark) and drag them into place.
 - [ ] Check the rotation looks right (slider in edit mode).
 
-### 2.5 Other screens
+### 2.6 Other screens
 - [ ] Restart with `python adalya_panel.py --lan` and allow Python through Windows Firewall (private networks).
 - [ ] From a phone on the site Wi-Fi: `http://<laptop-ip>:8080` opens and logs in? ☐
-- [ ] Create one **görevli** account for security and test it on their device.
+- [ ] Create one **Güvenlik** account for security and test it on their device.
 
-### 2.6 Leave it running
+### 2.7 Leave it running
 - [ ] Keep the panel running during the 1.7 measurements and compare its **Bugün kopma** and **24 sa erişim** columns with the watch log.
 - [ ] Write what was done today in **Bakım günlüğü**.
 
@@ -193,7 +223,7 @@ If something fails, run `python adalya_test.py nvr --user admin` and bring back 
 - [ ] Photos: NVR screen (before/after), router reservation list, NVR channel list
 - [ ] `results/` folder (check, drops, watch summaries, nvr probe)
 - [ ] Router config backup file (keep private)
-- [ ] Filled-in tables from 1.2, 1.5, 1.6, 1.7, 1.8, 2.3
+- [ ] Filled-in tables from 1.2, 1.5, 1.6, 1.7, 1.8, 2.3, 2.4 (live video: RTSP, codecs, MJPEG)
 - [ ] NVR BPS screenshot and firmware version
 - [ ] Router ISP, firmware, SNMP/remote management screenshot
 - [ ] Your AP decision notes (1.8)
