@@ -189,6 +189,165 @@ iframe.nvr { width: 100%; height: 75vh; border: 1px solid var(--line); border-ra
   .sidefoot { display: none; } .grid2 { grid-template-columns: minmax(0, 1fr); }
   main { padding: 16px; }
 }
+
+/* ======================================================================
+   2026 UI refresh: calmer type, bigger touch targets, plainer hierarchy.
+   Appended as an override layer so older page styles keep working.
+   ====================================================================== */
+:root {
+  --bg: #f7f6f3; --card: #ffffff; --soft: #f1efe9; --line: #e8e5dd; --text: #1b1e23; --muted: #6b7280; --side: #ffffff;
+  --ok: #2f7d4f; --ok-bg: #e7f4ec; --warn: #96590a; --warn-bg: #fdf2dc; --bad: #b3261e; --bad-bg: #fbe9e7;
+  --pin-ok: #2f9e5f; --pin-warn: #d08a1a; --pin-bad: #d24a44; --pin-unk: #8b8b85;
+  --accent: #1d5f8a; --accent-bg: #e9f2f9;
+  --r: 14px; --shadow: 0 1px 2px rgba(20, 20, 20, .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181a; --card: #1f2225; --soft: #292c30; --line: #33373b; --text: #ecebe6; --muted: #a2a29b; --side: #1b1d1f;
+    --ok: #8fce9f; --ok-bg: #1d3327; --warn: #f0bf76; --warn-bg: #3a2c12; --bad: #f09a94; --bad-bg: #45201e;
+    --accent: #8ab8df; --accent-bg: #123047;
+  }
+}
+html, body { font-size: 14.5px; }
+body { line-height: 1.55; }
+h1 { font-size: 25px; font-weight: 650; letter-spacing: -.01em; }
+h2 { font-size: 16px; }
+h3 { font-size: 14.5px; }
+.sub { font-size: 13px; }
+.app { grid-template-columns: 238px minmax(0, 1fr); }
+aside { padding: 16px 12px; gap: 2px; }
+.brand { padding: 4px 8px 16px; display: flex; align-items: center; gap: 10px; }
+.brand b { font-size: 15px; }
+main { padding: 24px 28px 44px; max-width: 1320px; }
+.pagehead { margin-bottom: 18px; }
+nav a { padding: 9px 10px; border-radius: 9px; font-size: 14.5px; }
+nav a.active { font-weight: 600; }
+.navgroup { font-size: 10.5px; letter-spacing: .07em; padding: 10px 10px 5px; }
+.sidefoot { font-size: 12px; }
+.card { border-radius: var(--r); padding: 18px; box-shadow: var(--shadow); }
+.card > h2 { margin-bottom: 12px; }
+button, .btn { border-radius: 9px; padding: 8px 13px; font-size: 13px; font-weight: 600; }
+button.primary, .btn.primary { background: var(--text); border-color: var(--text); color: var(--card); }
+input, select, textarea { border-radius: 10px; padding: 9px 11px; font-size: 14px; }
+label { font-size: 12px; font-weight: 500; }
+.metrics { gap: 14px; }
+.metric { border-radius: 12px; padding: 15px 16px; }
+.metric .l { font-size: 13px; }
+.metric .v { font-size: 26px; font-weight: 650; letter-spacing: -.02em; }
+.pill { border-radius: 20px; padding: 2px 9px; font-size: 12px; }
+.info, .warnbox { border-radius: 10px; }
+.list { border-radius: 12px; }
+.li { padding: 11px 14px; }
+th { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 600; padding: 11px 10px; }
+td { padding: 11px 10px; font-size: 13.5px; }
+.badge { border-radius: 8px; }
+
+/* dashboard */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 15px 16px; }
+.stat .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stat .l { font-size: 13px; color: var(--muted); font-weight: 500; }
+.stat .v { font-size: 28px; font-weight: 650; letter-spacing: -.02em; line-height: 1.15; margin-top: 6px; }
+.stat .v small { font-size: 15px; font-weight: 500; color: var(--muted); }
+.stat .s { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 16px; margin-bottom: 16px; align-items: start; }
+.card-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.card-h h2 { margin: 0; }
+.card-h a { font-size: 13px; font-weight: 600; }
+.ritem { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid var(--line); }
+.ritem:first-of-type { border-top: 0; }
+.ritem .grow { flex: 1; min-width: 0; }
+.ritem b { font-size: 14px; font-weight: 600; }
+.ritem .meta { font-size: 12.5px; color: var(--muted); }
+.ico-wrap { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.ico-wrap.red { background: var(--bad-bg); color: var(--bad); }
+.ico-wrap.amber { background: var(--warn-bg); color: var(--warn); }
+.ico-wrap.blue { background: var(--accent-bg); color: var(--accent); }
+.ico-wrap.green { background: var(--ok-bg); color: var(--ok); }
+.agenda .ag { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); align-items: flex-start; }
+.agenda .ag:first-child { border-top: 0; }
+.ag .d { width: 40px; flex: none; text-align: center; background: var(--soft); border-radius: 9px; padding: 5px 0; }
+.ag .d b { display: block; font-size: 15px; line-height: 1.15; }
+.ag .d span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ag .grow { flex: 1; min-width: 0; }
+.ag b.t { font-size: 13.5px; font-weight: 600; }
+.ag .meta { font-size: 12px; color: var(--muted); }
+.quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.q { display: flex; flex-direction: column; gap: 3px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 14px 16px; text-decoration: none; color: inherit; }
+.q:hover { border-color: var(--muted); }
+.q .ico-wrap { margin-bottom: 6px; width: 34px; height: 34px; }
+.q b { font-size: 14px; font-weight: 600; }
+.q span { font-size: 12.5px; color: var(--muted); }
+.greet .sub { margin-top: 3px; }
+.shift{display:grid;grid-template-columns:390px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.shift{grid-template-columns:minmax(0,1fr)}}
+.platebox{display:flex;gap:8px;margin-top:8px}
+.platebox input{flex:1;min-width:0;font-size:20px;font-weight:700;letter-spacing:.05em;padding:10px 12px;text-transform:uppercase}
+.platebox button{flex:none;padding:10px 14px;font-size:14px}
+.platebig{font-size:18px;font-weight:800;letter-spacing:.06em;border:2px solid var(--text);border-radius:7px;padding:2px 9px;display:inline-block}
+.feedgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (max-width:700px){.feedgrid{grid-template-columns:minmax(0,1fr)}}
+.feed{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:16/9;background:#22261f;color:#b9b7b0}
+.feed img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.feed .offline{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;background:repeating-linear-gradient(135deg,#232624,#232624 10px,#1c1f1d 10px,#1c1f1d 20px);color:#d9a3a0}
+.feed .nm{position:absolute;left:0;right:0;bottom:0;padding:18px 10px 7px;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;font-size:12px;font-weight:600;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.feed .nm i{width:6px;height:6px;border-radius:50%;background:#6ee7a0;display:inline-block;margin-right:5px}
+.feed .nm .bad i{background:#ff8a80}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.chip.plain{background:var(--soft);color:var(--muted);font-weight:500}
+.chip.green{background:var(--ok-bg);color:var(--ok)}
+.chip.amber{background:var(--warn-bg);color:var(--warn)}
+.chip.red{background:var(--bad-bg);color:var(--bad)}
+.chip.blue{background:var(--accent-bg);color:var(--accent)}
+.hero{border-radius:18px;padding:22px;background:linear-gradient(155deg,#1d2f28,#27443a);color:#fff;margin-bottom:16px;box-shadow:0 14px 30px -22px rgba(20,45,35,.8)}
+.hero .l{font-size:12.5px;opacity:.72}
+.hero .v{font-size:38px;font-weight:650;letter-spacing:-.02em;line-height:1.1;margin-top:4px}
+.hero .v small{font-size:17px;font-weight:500;opacity:.8}
+.hero .split{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.hero .split span{border-radius:20px;padding:4px 11px;font-size:12.5px;background:rgba(255,255,255,.12)}
+.hero .split .over{background:rgba(255,177,66,.18);color:#ffd08a;font-weight:600}
+.hero .due{font-size:12px;opacity:.66;margin-top:9px}
+.hero .acts{display:flex;gap:10px;margin-top:15px;flex-wrap:wrap}
+.hero .acts button{border-radius:11px;padding:11px 16px;font-size:14px;font-weight:650}
+.hero .acts .pay{background:#fff;color:#1d2f28}
+.hero .acts .ghost{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.22)}
+.head-actions{display:flex;align-items:center;gap:10px}
+
+/* resident bottom navigation */
+body.has-tabbar main { padding-bottom: 92px; }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: none; background: var(--card); border-top: 1px solid var(--line); padding: 6px 6px 8px; }
+body.has-tabbar .tabbar { display: flex; }
+.tabbar a { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; color: var(--muted); text-decoration: none; padding: 6px 2px; border-radius: 10px; }
+.tabbar a.active { color: var(--accent); }
+.tabbar svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 1150px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat .v { font-size: 24px; }
+  .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  main { padding: 16px 14px 88px; }
+  .hero .v { font-size: 30px; }
+  .platebox input { font-size: 18px; }
+}
+/* keep the original mobile collapse after the override layer */
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  aside { position: static; height: auto; flex-direction: column; }
+  nav { display: flex; flex-wrap: wrap; gap: 2px; }
+  .navgroup { display: none !important; }
+  .navsec, .navsec > .navitems { display: contents !important; }
+  .sidefoot { display: none; }
+  body.has-tabbar aside { display: none; }
+  .li { flex-wrap: wrap; }
+  .li .t { white-space: normal; text-align: right; overflow-wrap: anywhere; }
+}
+body { overflow-x: hidden; }
+.tabbar { width: 100%; max-width: 100vw; box-sizing: border-box; }
 </style>
 </head>
 <body>
@@ -248,10 +407,11 @@ const pinColor = l => ({ ok: "var(--pin-ok)", warn: "var(--pin-warn)", bad: "var
    C = site sakini too, but only when the manager has given their flat at least one camera. */
 const NAV = [
   ["Sitem", true, [["dairem", "Dairem", "R"]]],
-  ["İzleme", true, [["genel", "Genel bakış", "S"], ["canli", "Canlı izleme", "SC"], ["kameralar", "Kameralar", "S"], ["harita", "Site haritası", "SC"], ["ag", "Ağ cihazları", "S"]]],
-  ["Kayıt ve kanıt", true, [["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olaylar ve loglar", "S"], ["disa", "Dışa aktar", "S"]]],
+  ["İzleme", true, [["genel", "Bugün", "S"], ["vardiya", "Vardiya ekranı", "S"], ["canli", "Canlı izleme", "SC"], ["kameralar", "Kameralar", "S"], ["harita", "Site haritası", "SC"]]],
+  ["Kayıt ve kanıt", false, [["kayitlar", "Kayıtlar", "S"], ["olaylar", "Olaylar ve loglar", "S"], ["disa", "Dışa aktar", "S"]]],
   ["Sakinler", false, [["sakinler", "Daireler ve kişiler", "S"], ["aidat", "Aidat ve tahsilat", "A"], ["ziyaret", "Ziyaretçi ve araç", "S"], ["mesaj", "Mesaj gönder", "A"], ["talepler", "Talepler", "A"], ["kamerayetki", "Sakin kamera erişimi", "A"]]],
-  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
+  ["Yönetim", false, [["takvim", "Takvim ve görevler", "A"], ["sozlesmeler", "Sözleşmeler ve poliçeler", "A"], ["belgeler", "Belgeler", "A"], ["bakim", "Bakım günlüğü", "S"]]],
+  ["Teknik", false, [["ag", "Ağ cihazları", "S"], ["nvr", "NVR arayüzü", "S"], ["ayarlar", "Ayarlar", "S"]]],
   ["Hakkında", false, [["proje", "Proje", "SR"]]],
 ];
 const ROLE_TR = { admin: "Yönetici", staff: "Güvenlik", resident: "Site sakini" };
@@ -268,12 +428,24 @@ const NAV_KEY = "adalya.nav.open";
 function navOpenState() { let o = {}; try { o = JSON.parse(localStorage.getItem(NAV_KEY) || "{}") || {}; } catch {} return o; }
 function setNavOpen(g, v) { const o = navOpenState(); o[g] = v; try { localStorage.setItem(NAV_KEY, JSON.stringify(o)); } catch {} }
 
+function tabbar() {
+  if (!isResident()) return "";
+  const camsOn = (S.me.user.cams || 0) > 0;
+  return `<nav class="tabbar" aria-label="Hızlı menü">
+    <a href="#/dairem" data-nav2="dairem"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/></svg>Dairem</a>
+    ${camsOn ? `<a href="#/canli" data-nav2="canli"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="12.5" height="12" rx="2.2"/><path d="m15.5 10.2 5-3v9.6l-5-3"/></svg>Kameralar</a>
+    <a href="#/harita" data-nav2="harita"><svg viewBox="0 0 24 24"><path d="m9 4 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14M15 6v14"/></svg>Harita</a>` : ""}
+    <a href="#/proje" data-nav2="proje"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 8h.01"/></svg>Proje</a>
+  </nav>`;
+}
+
 function shell() {
   const open = navOpenState();
+  document.body.classList.toggle("has-tabbar", isResident());
   $("#root").innerHTML = `
   <div class="app">
     <aside>
-      <div class="brand"><b id="brandName">${esc(site().site_name)}</b><span>${isResident() ? "Site sakini paneli" : "Site yönetim paneli"}</span></div>
+      <div class="brand"><div style="width:36px;height:36px;border-radius:11px;background:var(--text);color:var(--card);display:grid;place-items:center;font-weight:700;flex:none">A</div><div><b id="brandName">${esc(site().site_name)}</b><span>${isResident() ? "Sakin paneli" : "Site yönetimi"}</span></div></div>
       <nav>${NAV.map(([g, def, items]) => {
         const vis = items.filter(([id]) => canSee(id)); if (!vis.length) return "";
         const isOpen = open[g] ?? def;
@@ -287,7 +459,8 @@ function shell() {
       </div>
     </aside>
     <main id="main"></main>
-  </div>`;
+  </div>
+  ${tabbar()}`;
   $$(".navsec > .navgroup").forEach(b => b.onclick = () => {
     const sec = b.parentElement, v = !sec.classList.contains("open");
     sec.classList.toggle("open", v); b.setAttribute("aria-expanded", v); setNavOpen(sec.dataset.sec, v);
@@ -314,6 +487,7 @@ function render() {
   S.page = page;
   $("#main")?.classList.toggle("wide", page === "canli");
   $$("[data-nav]").forEach(a => a.classList.toggle("active", a.dataset.nav === page));
+  $$("[data-nav2]").forEach(a => a.classList.toggle("active", a.dataset.nav2 === page));
   const sec = $(`[data-nav="${page}"]`)?.closest(".navsec");
   if (sec && !sec.classList.contains("open")) { sec.classList.add("open"); sec.querySelector(".navgroup").setAttribute("aria-expanded", true); }
   const main = $("#main");
@@ -499,59 +673,188 @@ document.addEventListener("click", e => {
 
 const PAGES = {};
 
+function greetTR() { const h = new Date().getHours(); return h < 6 ? "İyi geceler" : h < 12 ? "Günaydın" : h < 18 ? "İyi günler" : "İyi akşamlar"; }
+function todayTR() { try { return new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); } catch { return ymd(new Date()); } }
+const ic = p => `<svg viewBox="0 0 24 24" style="width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round">${p}</svg>`;
+const IC = {
+  cam: '<rect x="3" y="6" width="12.5" height="12" rx="2.2"/><path d="m15.5 10.2 5-3v9.6l-5-3"/>',
+  money: '<rect x="3" y="6" width="18" height="13" rx="2.4"/><path d="M3 10.5h18"/>',
+  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/>',
+  chat: '<path d="M4 5h16v11H8l-4 4z"/>',
+  check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+  nvr: '<rect x="2.5" y="9" width="19" height="7" rx="2"/><path d="M6 9V7.5M18 9V7.5M6 16v1.5M18 16v1.5"/>',
+  car: '<path d="M5 16V9l1.8-3h10.4L19 9v7"/><path d="M3 16h18"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="16.5" cy="17.5" r="1.6"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="m20 20-3.6-3.6"/>',
+  down: '<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/>',
+};
+
 PAGES.genel = {
+  extra: null,
+  loaded: false,
   render(el) {
-    el.innerHTML = head("Genel bakış", "Sitenin anlık durumu") + `
-      <section class="metrics" id="metrics"></section>
-      <div class="card"><h2><span>Site haritası <small>90 × 90 m · bir cihaza tıklayın</small></span><a class="btn" href="#/harita">Haritayı aç</a></h2><div id="miniMap"></div>${legendHTML()}</div>
-      <div class="grid2">
-        <div class="card"><h2>Dikkat isteyenler</h2><div class="list" id="alerts"></div></div>
-        <div class="card"><h2>Son olaylar <small>son 24 saat</small></h2><div class="list" id="ev"></div></div>
+    const u = S.me.user, first = (u.name || "").split(" ")[0] || u.name;
+    this.extra = null; this.loaded = false;
+    el.innerHTML = `
+      <div class="pagehead greet">
+        <div><h1>${greetTR()}, ${esc(first)}</h1><div class="sub">${esc(todayTR())} · ${esc(site().site_name)}</div></div>
+        <div class="head-actions">
+          <span class="hint" style="display:flex;align-items:center;gap:6px"><span class="dot" id="liveDot"></span><span id="liveText">Canlı</span></span>
+          ${isAdmin() ? '<a class="btn primary" href="#/mesaj">+ Duyuru gönder</a>' : '<a class="btn primary" href="#/ziyaret">Ziyaretçi kaydı</a>'}
+        </div>
       </div>
-      ${isAdmin() ? `<div class="card"><h2><span>Yaklaşan işler <small>hukuki tarihler, görevler, sözleşmeler</small></span><a class="btn" href="#/takvim">Takvimi aç</a></h2><div class="list" id="dueList"><div class="empty">Yükleniyor…</div></div></div>` : ""}
-      <div class="cards3">
-        <div class="card"><h2>Bir olay mı oldu?</h2><p>Kamera ve saati seçip kaydı indirin, olay listesini ve logları alın.</p><div><a class="btn primary" href="#/kayitlar">Kayıt ara</a> <a class="btn" href="#/disa">Dışa aktar</a></div></div>
-        <div class="card"><h2>NVR</h2><p id="nvrLine">–</p><div><a class="btn" href="#/nvr">NVR arayüzü</a></div></div>
-        <div class="card"><h2>Bakım günlüğü</h2><p>Yapılan her işi buraya yazın; bir sonraki kişi ne yapıldığını görsün.</p><div><a class="btn" href="#/bakim">Not ekle</a></div></div>
+      <section class="stats" id="dashStats"></section>
+      <div class="cols">
+        <section class="card"><div class="card-h"><h2>Şimdi ilgilenmeniz gerekenler</h2><a href="#/kameralar">Tümünü gör</a></div><div id="dashAttn"><div class="empty">Yükleniyor…</div></div></section>
+        <section class="card"><div class="card-h"><h2 id="dashRightT">Bugün ve yaklaşan</h2><a id="dashRightA" href="#/takvim">Takvim</a></div><div class="agenda" id="dashAgenda"></div></section>
+      </div>
+      <div class="quick">${this.quick()}</div>`;
+    this.draw();
+    this.loadExtra();
+  },
+  quick() {
+    const q = isAdmin()
+      ? [["money", "Aidat hatırlat", "Geciken daireler", "#/aidat"], ["car", "Ziyaretçi kaydı", "Plaka ve daire", "#/ziyaret"], ["search", "Plaka sorgula", "Araç kimin?", "#/ziyaret"], ["down", "Rapor indir", "Son 7 gün", "#/disa"]]
+      : [["cam", "Canlı izleme", "Tüm kameralar", "#/canli"], ["search", "Plaka sorgula", "Araç kimin?", "#/ziyaret"], ["car", "Ziyaretçi kaydı", "Plaka ve daire", "#/ziyaret"], ["nvr", "Kayıt ara", "Olay olduysa", "#/kayitlar"]];
+    return q.map(([i, t, s, h]) => `<a class="q" href="${h}"><span class="ico-wrap ${i === "money" ? "amber" : i === "search" ? "green" : "blue"}">${ic(IC[i])}</span><b>${t}</b><span>${s}</span></a>`).join("");
+  },
+  async loadExtra() {
+    if (this.loaded) return;
+    this.loaded = true;
+    const ex = this.extra = {};
+    const jobs = [];
+    if (isAdmin()) {
+      jobs.push(api("/api/alerts").then(a => ex.alerts = a).catch(() => {}));
+      jobs.push(api("/api/dues").then(d => ex.dues = d).catch(() => {}));
+      jobs.push(api("/api/requests").then(r => ex.requests = r.requests || []).catch(() => {}));
+    }
+    await Promise.all(jobs);
+    if (S.page === "genel") this.draw();
+  },
+  draw() {
+    if (S.page !== "genel" || !$("#dashStats")) return;
+    const st = S.status; if (!st) return;
+    const vis = visible(), cs = vis.filter(d => d.type === "camera"), net = vis.filter(d => d.type !== "camera");
+    const up = cs.filter(d => d.up).length, down = cs.filter(d => d.up === false), netUp = net.filter(d => d.up).length;
+    const drops = vis.reduce((a, d) => a + (d.drops_today || 0), 0);
+    const ex = this.extra || {}, du = ex.dues, al = ex.alerts;
+    let debt = 0, debtN = 0, oldest = "";
+    if (du) for (const f of Object.values(du.flats)) {
+      if (f.overdue > 0) {
+        debt += f.overdue; debtN++;
+        if (f.oldest_due && (!oldest || f.oldest_due < oldest)) oldest = f.oldest_due;
+      }
+    }
+    const reqN = (ex.requests || []).filter(r => r.status === "acik").length;
+    const n = st.nvr, chip = (t, c) => `<span class="chip ${c}">${t}</span>`;
+    const stats = isAdmin() ? [
+      ["Kameralar", `${up}<small> / ${cs.length} çalışıyor</small>`, down.length ? chip(down.length + " kapalı", "red") : chip("Tümü açık", "green"), down.length ? esc(down.slice(0, 2).map(d => d.name).join(", ")) : "Sorun yok"],
+      ["Bugünkü kopma", String(drops), chip("son 24 saat", "plain"), drops ? "Kısa kesintiler olabilir" : "Kesinti yok"],
+      ["Aidat borcu", `${TL(debt).replace(" TL", "")} <small>TL</small>`, debtN ? chip(debtN + " daire", "red") : chip("Borç yok", "green"), debtN && oldest ? "En eski vade " + trDate(oldest) : "Tüm daireler güncel"],
+      ["Yaklaşan iş", al ? String(al.counts.duties + al.counts.tasks + al.counts.contracts) : "–", chip("bu ay", "plain"), "Hukuki tarihler ve sözleşmeler"],
+    ] : [
+      ["Kameralar", `${up}<small> / ${cs.length}</small>`, down.length ? chip(down.length + " kapalı", "red") : chip("Tümü açık", "green"), down.length ? esc(down.slice(0, 2).map(d => d.name).join(", ")) : "Sorun yok"],
+      ["Bugünkü kopma", String(drops), chip("son 24 saat", "plain"), "Tüm cihazlar"],
+      ["Ağ cihazları", `${netUp}<small> / ${net.length}</small>`, netUp === net.length ? chip("Tümü açık", "green") : chip("Eksik", "warn"), "Router, switch, NVR"],
+      ["NVR", n.connected ? (n.disk_pct == null ? "?" : "%" + n.disk_pct) : "–", n.connected ? chip("Bağlı", "green") : chip("Bağlı değil", "warn"), n.connected ? "Disk doluluk" : "Ayarlar → NVR"],
+    ];
+    $("#dashStats").innerHTML = stats.map(([l, v, c, s]) => `<div class="stat"><div class="top"><span class="l">${l}</span>${c}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+    const rows = [];
+    down.slice(0, 3).forEach(d => rows.push({
+      ico: "red", svg: IC.cam, title: `${d.name} kapalı`, meta: `${dur(st.now - (d.since || st.now))} süredir görüntü yok`, btn: "İncele", go: "#/kameralar",
+    }));
+    cs.filter(d => d.up && d.drops_today > 0).slice(0, 1).forEach(d => rows.push({
+      ico: "amber", svg: IC.cam, title: `${d.name} bugün ${d.drops_today} kez koptu`, meta: "Bağlantı kararsız · kamera ayarlarını kontrol edin", btn: "İncele", go: "#/kameralar",
+    }));
+    if (isAdmin() && debtN) rows.push({ ico: "amber", svg: IC.money, title: `${debtN} daire aidatı geciktirdi`, meta: `Toplam ${TL(debt)} · en eski vade ${trDate(oldest)}`, btn: "Hatırlat", go: "#/aidat" });
+    if (isAdmin() && al) al.contracts.slice(0, 1).forEach(c => rows.push({
+      ico: "amber", svg: IC.doc, title: c.status === "expired" ? `${c.name} süresi geçti` : `${c.name} ${c.days_left} gün içinde bitiyor`, meta: c.end_date ? trDate(c.end_date) : "Bitiş tarihi yok", btn: "Aç", go: "#/sozlesmeler",
+    }));
+    if (isAdmin() && reqN) rows.push({ ico: "blue", svg: IC.chat, title: `${reqN} açık talep`, meta: "Sakinlerden gelen istekler", btn: "Yanıtla", go: "#/talepler" });
+    if (isAdmin() && !n.connected) rows.push({ ico: "amber", svg: IC.nvr, title: "NVR bağlı değil", meta: "Canlı görüntü ve kayıtlar için bağlanın", btn: "Bağlan", go: "#/ayarlar" });
+    if (!rows.length) rows.push({ ico: "green", svg: IC.check, title: "Şimdi ilgilenmeniz gereken bir şey yok", meta: "Kameralar ve cihazlar çalışıyor.", btn: "", go: "" });
+    $("#dashAttn").innerHTML = rows.map(r => `<div class="ritem"><div class="ico-wrap ${r.ico}">${ic(r.svg)}</div><div class="grow"><b>${esc(r.title)}</b><div class="meta">${esc(r.meta)}</div></div>${r.go ? `<a class="btn" href="${r.go}">${esc(r.btn)}</a>` : ""}</div>`).join("");
+
+    if (isAdmin()) {
+      $("#dashRightT").textContent = "Bugün ve yaklaşan";
+      $("#dashRightA").href = "#/takvim"; $("#dashRightA").textContent = "Takvim";
+      const ag = [];
+      if (al) {
+        al.duties.forEach(d => ag.push({ date: d.date, title: d.title, meta: `${d.law} · ${d.days_left < 0 ? Math.abs(d.days_left) + " gün gecikti" : d.days_left === 0 ? "bugün" : d.days_left + " gün kaldı"}`, late: d.days_left < 0 }));
+        al.tasks.forEach(t => ag.push({ date: t.date, title: t.title, meta: (TASK_KIND_TR[t.kind] || "Görev") + (t.days_left < 0 ? " · gecikti" : t.days_left === 0 ? " · bugün" : " · " + t.days_left + " gün"), late: t.days_left < 0 }));
+        al.contracts.forEach(c => ag.push({ date: c.end_date, title: c.name, meta: "Sözleşme · " + (c.status === "expired" ? "süresi geçti" : c.days_left + " gün"), late: c.status === "expired" }));
+      }
+      ag.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+      $("#dashAgenda").innerHTML = ag.length ? ag.slice(0, 5).map(a => `<div class="ag"><div class="d"><b>${+a.date.slice(8, 10)}</b><span>${MONTHS[+a.date.slice(5, 7) - 1].slice(0, 3)}</span></div><div class="grow"><b class="t">${esc(a.title)}</b><div class="meta ${a.late ? "bad" : ""}">${esc(a.meta)}</div></div></div>`).join("") : '<div class="empty">Yaklaşan bir iş yok.<br><a href="#/takvim">Takvimden görev ekleyin</a></div>';
+    } else {
+      $("#dashRightT").textContent = "Son olaylar";
+      $("#dashRightA").href = "#/olaylar"; $("#dashRightA").textContent = "Tümü";
+      $("#dashAgenda").innerHTML = `<div class="list">${eventsHTML(st.events, 5)}</div>`;
+    }
+  },
+  onStatus() { this.draw(); },
+};
+
+/* Bugün is the new name of the old Genel bakış: same page id, task-first layout. */
+
+PAGES.vardiya = {
+  render(el) {
+    const n = S.status?.nvr || {};
+    el.innerHTML = `
+      <div class="pagehead">
+        <div><h1>Vardiya ekranı</h1><div class="sub">${esc(todayTR())} · plaka sorgula, kameraları izle</div></div>
+        <div class="head-actions"><a class="btn" href="#/ziyaret">Ziyaretçi kaydı</a><a class="btn primary" href="#/canli">Canlı izleme</a></div>
+      </div>
+      <div class="shift">
+        <div>
+          <div class="card"><label for="plQ">Plaka sorgula</label>
+            <div class="platebox"><input id="plQ" placeholder="07 ABC 123" autocomplete="off" spellcheck="false"><button class="primary" id="plGo">Sorgula</button></div>
+            <div class="hint" style="margin-top:7px">Kısmi plaka da aranır: “07 ABC” yeterli.</div>
+          </div>
+          <div id="plRes"></div>
+          <div class="card"><div class="card-h"><h2>Son ziyaretçiler</h2><a href="#/ziyaret">Tümü</a></div><div id="shiftVis"><div class="empty">Yükleniyor…</div></div></div>
+        </div>
+        <div class="card"><div class="card-h"><h2>Kameralar</h2><a href="#/canli">Tümünü göster</a></div>
+          ${n.connected ? '<div class="feedgrid" id="shiftCams"></div>' : '<div class="empty">NVR bağlı değil. Canlı görüntü için yönetici Ayarlar’dan bağlanmalı.</div>'}
+        </div>
       </div>`;
-    this.onStatus();
-    this.due();
+    $("#plGo").onclick = () => this.lookup();
+    $("#plQ").onkeydown = e => { if (e.key === "Enter") this.lookup(); };
+    $("#plQ").focus();
+    if (n.connected) { this.loadCams(); every(() => this.loadCams(), 4000); }
+    this.loadVisitors();
   },
-  async due() {
-    if (!isAdmin() || !$("#dueList")) return;
+  loadCams() {
+    const box = $("#shiftCams"); if (!box) return;
+    box.innerHTML = cams().slice(0, 6).map(c => {
+      const live = c.up !== false;
+      return `<div class="feed"><img src="/api/nvr/snapshot?ch=${c.channel}" alt="${esc(c.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="offline" style="display:none">Görüntü yok</div><div class="nm ${live ? "" : "bad"}"><span>${esc(c.name)}</span><span><i></i>${live ? "Canlı" : "Kapalı"}</span></div></div>`;
+    }).join("");
+  },
+  async loadVisitors() {
     try {
-      const a = await api("/api/alerts");
-      const rows = [
-        ...a.contracts.map(c => ({ go: "sozlesmeler", date: c.end_date, title: c.name, kind: "Sözleşme", cls: c.status === "expired" ? "bad" : "warn", left: c.days_left })),
-        ...a.tasks.map(t => ({ go: "takvim", date: t.date, title: t.title, kind: (TASK_KIND_TR[t.kind] || "Görev"), cls: t.days_left < 0 ? "bad" : "warn", left: t.days_left })),
-        ...a.duties.map(d => ({ go: "takvim", date: d.date, title: d.title, kind: d.law, cls: d.days_left < 0 ? "bad" : "", left: d.days_left })),
-      ].sort((x, y) => x.date.localeCompare(y.date));
-      const total = a.counts.contracts + a.counts.tasks + a.counts.duties;
-      $("#dueList").innerHTML = rows.length ? rows.slice(0, 8).map(r =>
-        `<div class="li click" data-due="${r.go}"><span>${esc(r.title)} <span class="hint">${esc(r.kind)}</span></span>
-          <span class="t ${r.cls}">${trDate(r.date)} · ${r.left < 0 ? Math.abs(r.left) + " gün gecikti" : r.left === 0 ? "bugün" : r.left + " gün"}</span></div>`).join("")
-        + (total > 8 ? `<div class="li"><span class="hint">… ve ${total - 8} iş daha</span><a href="#/takvim">Takvim</a></div>` : "")
-        : '<div class="empty">Yaklaşan bir iş yok. Takvimden görev ekleyebilirsiniz.</div>';
-      $$("[data-due]").forEach(el => el.onclick = () => { location.hash = "#/" + el.dataset.due; });
-    } catch (e) { $("#dueList").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+      const r = await api("/api/visitors");
+      const v = r.visitors.slice(0, 4);
+      $("#shiftVis").innerHTML = v.length ? `<div class="list">${v.map(x => `<div class="li"><span><b>${esc(x.name)}</b>${x.flat ? " · " + esc(x.flat) : ""}</span><span class="t">${hm(x.ts_in)} · ${x.ts_out ? "çıktı" : "içeride"}</span></div>`).join("")}</div>` : '<div class="empty">Bugün ziyaretçi yok.</div>';
+    } catch (e) { $("#shiftVis").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
-  onStatus() {
-    const st = S.status; if (!st || !$("#metrics")) return;
-    const vis = visible(), c = vis.filter(d => d.type === "camera"), net = vis.filter(d => d.type !== "camera");
-    const up = c.filter(d => d.up).length, drops = vis.reduce((a, d) => a + d.drops_today, 0), down = vis.filter(d => d.up === false).length;
-    const n = st.nvr, upNet = net.filter(d => d.up).length;
-    $("#metrics").innerHTML = [
-      ["Çevrimiçi kamera", `${up} / ${c.length}`, up === c.length ? "ok" : up >= c.length * .8 ? "warn" : "bad"],
-      ["Bugünkü kopmalar", drops, drops ? "warn" : "ok"],
-      ["Şu an kapalı", down, down ? "bad" : "ok"],
-      ["Ağ cihazları", `${upNet} / ${net.length}`, upNet === net.length ? "ok" : "warn"],
-      ["NVR disk", n.connected ? (n.disk_pct == null ? "?" : "%" + n.disk_pct) : "–", n.connected ? "" : ""],
-    ].map(([l, v, c2]) => `<div class="metric"><div class="l">${l}</div><div class="v ${c2}">${v}</div></div>`).join("");
-    this.drawMap();
-    const bad = vis.filter(d => level(d) === "bad" || level(d) === "warn").sort((a, b) => (a.up === false ? 0 : 1) - (b.up === false ? 0 : 1));
-    $("#alerts").innerHTML = bad.length ? bad.map(d => `<div class="li click" data-goto="${d.ip}"><span><span class="dot ${level(d)}"></span> ${esc(d.name)}</span><span class="t">${esc(statusText(d))}${d.drops_today ? " · " + d.drops_today + " kopma" : ""}</span></div>`).join("") : '<div class="empty">Her şey çalışıyor.</div>';
-    $("#ev").innerHTML = eventsHTML(st.events, 8);
-    $("#nvrLine").textContent = n.connected ? `${n.type || "NVR"} · ${n.host}${n.time ? " · saat " + n.time.slice(11, 16) : ""}${n.disk_states?.length ? " · disk " + n.disk_states.join(", ") : ""}` : (n.error || "NVR bağlı değil. Ayarlar sayfasından bağlanın.");
+  async lookup() {
+    const q = $("#plQ").value.trim(), box = $("#plRes");
+    box.innerHTML = "";
+    if (q.length < 3) { box.innerHTML = '<div class="card"><div class="warnbox">En az 3 karakter yazın.</div></div>'; return; }
+    try {
+      const r = await api("/api/plate?q=" + encodeURIComponent(q));
+      if (!r.results.length) {
+        box.innerHTML = `<div class="card"><div class="empty"><b>${esc(q.toUpperCase())}</b> kayıtlı değil.<br><br><a class="btn" href="#/ziyaret">Ziyaretçi olarak kaydet</a></div></div>`;
+        return;
+      }
+      box.innerHTML = r.results.slice(0, 3).map(v => `<div class="card">
+        <div class="card-h"><span class="platebig">${esc(v.plate)}</span><span class="chip green">Kayıtlı araç</span></div>
+        <div class="hint" style="margin-bottom:6px">${esc(v.flat)}${v.model ? " · " + esc([v.color, v.model].filter(Boolean).join(" ")) : ""}${v.parking ? " · Otopark " + esc(v.parking) : ""}</div>
+        ${v.people.map(p => `<div class="li"><span>${esc(p.name)} <span class="pill unk">${KIND_TR[p.kind] || p.kind}</span></span><span class="t">${esc(p.phone || "")}</span></div>`).join("")}
+        <div style="margin-top:10px"><a class="btn primary" href="#/ziyaret">Giriş kaydet</a></div>
+      </div>`).join("");
+    } catch (e) { box.innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; }
   },
 };
 
@@ -1691,38 +1994,75 @@ PAGES.talepler = {
 PAGES.dairem = {
   duesCard(d, methods) {
     const s = d.state, last = d.ledger.slice(-12).reverse();
-    return `<div class="card"><h2>Aidat <small>son ödeme: her ayın ${d.due_day}. günü</small></h2>
-      ${s.overdue > 0 ? `<div class="warnbox"><b>${TL(s.overdue)}</b> tutarında gecikmiş aidatınız var (en eski vade ${trDay(s.oldest_due)}). Kat Mülkiyeti Kanunu'na göre aylık %${String(d.late_pct).replace(".", ",")} gecikme tazminatı uygulanabilir.</div>` : ""}
+    return `<div class="card" id="ledgerCard"><div class="card-h"><h2>Aidat ayrıntıları</h2><span class="hint">Son ödeme: her ayın ${d.due_day}. günü</span></div>
+      ${s.overdue > 0 ? `<div class="warnbox"><b>${TL(s.overdue)}</b> gecikmiş ödemeniz var (en eski vade ${trDay(s.oldest_due)}). Kat Mülkiyeti Kanunu'na göre aylık %${String(d.late_pct).replace(".", ",")} gecikme tazminatı uygulanabilir.</div>` : ""}
       <div class="facts"><div class="fact"><div class="l">Güncel bakiye</div><div class="v ${s.overdue > 0 ? "bad" : s.balance > 0 ? "warn" : "ok"}">${s.balance < 0 ? TL(-s.balance) + " alacaklı" : TL(s.balance)}</div></div>
         <div class="fact"><div class="l">Gecikmiş</div><div class="v ${s.overdue > 0 ? "bad" : "ok"}">${TL(s.overdue)}</div></div>
         <div class="fact"><div class="l">Toplam ödemeniz</div><div class="v">${TL(s.paid)}</div></div></div>
-      ${d.iban ? `<div class="info">Ödeme: <b>${esc(d.account_name || site().site_name + " Yönetimi")}</b><br>IBAN: <span class="mono" style="font-size:14px">${esc(d.iban)}</span><br>Açıklamaya daire bilginizi yazın. Ödemeniz yönetim kaydettikten sonra burada görünür.</div>` : ""}
+      ${d.iban ? `<div class="info" id="payInfo">Ödeme: <b>${esc(d.account_name || site().site_name + " Yönetimi")}</b><br>IBAN: <span class="mono" style="font-size:14px">${esc(d.iban)}</span><br>Açıklamaya daire bilginizi yazın. Ödemeniz yönetim kaydettikten sonra burada görünür.</div>` : ""}
       ${last.length ? `<h3>Son hareketler</h3><div class="tablewrap"><table><thead><tr><th>Tarih</th><th>Açıklama</th><th style="text-align:right">Tutar</th><th style="text-align:right">Bakiye</th></tr></thead><tbody>
         ${last.map(x => `<tr><td>${trDay(x.date)}</td><td>${x.type === "charge" ? `${KIND_CHARGE[x.kind] || x.kind}${x.kind === "aidat" ? " · " + trPeriod(x.period) : ""}${x.note ? " · " + esc(x.note) : ""}` : `Ödemeniz · ${esc(methods[x.method] || x.method)}`}</td>
           <td style="text-align:right" class="${x.type === "payment" ? "ok" : ""}">${x.type === "payment" ? "−" : ""}${TL(x.amount)}</td><td style="text-align:right">${TL(x.balance)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="hint">Henüz aidat hareketi yok.</div>'}</div>`;
   },
   render(el) {
-    el.innerHTML = head("Dairem", "Kayıtlı bilgileriniz, araçlarınız ve talepleriniz") + '<div id="myBody"><div class="empty">Yükleniyor…</div></div>';
+    const u = S.me.user, first = (u.name || "").split(" ")[0] || u.name;
+    el.innerHTML = `
+      <div class="pagehead greet">
+        <div><h1>Merhaba, ${esc(first)}</h1><div class="sub" id="myFlatLine">Daireniz yükleniyor…</div></div>
+        <div class="head-actions"><span class="hint" style="display:flex;align-items:center;gap:6px"><span class="dot" id="liveDot"></span><span id="liveText">Canlı</span></span></div>
+      </div>
+      <div id="myBody"><div class="empty">Yükleniyor…</div></div>`;
     this.load();
   },
   async load() {
     let r; try { r = await api("/api/my"); } catch (e) { $("#myBody").innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; return; }
     const f = r.flat;
-    $("#myBody").innerHTML = (f ? `
-      <div class="card"><h2>${esc(flatName(f))}${f.kapi ? ` <small>Kapı ${esc(f.kapi)}</small>` : ""}</h2>
+    const s = r.dues?.state;
+    const openReq = (r.requests || []).filter(q => q.status === "acik").length;
+    const months = r.dues ? new Set((r.dues.ledger || []).filter(x => x.type === "charge").map(x => x.period)).size : 0;
+    if (!f) {
+      $("#myBody").innerHTML = '<div class="card"><div class="empty">Hesabınız henüz bir daireye bağlı değil. Yönetime bildirin.</div></div>';
+      return;
+    }
+    $("#myFlatLine").innerHTML = `${esc(flatName(f))} · ${f.people.filter(p => !p.move_out).length} kişi · ${f.vehicles.length} araç`;
+
+    const hero = s ? `<div class="hero">
+      <div class="l">Ödenecek tutar</div>
+      <div class="v">${s.balance < 0 ? TL(-s.balance) + " <small>alacaklı</small>" : TL(s.balance)}</div>
+      <div class="split">${s.overdue > 0 ? `<span class="over">${TL(s.overdue)} gecikmiş</span>` : `<span>Gecikme yok</span>`}<span>Bu ay: ${TL(r.dues.month_charged || 0)}</span></div>
+      <div class="due">Son ödeme: her ayın ${r.dues.due_day}. günü${s.overdue > 0 && s.oldest_due ? ` · ${trDay(s.oldest_due)} tarihli ödeme gecikti` : ""}</div>
+      <div class="acts"><button class="pay" id="heroOpen">Ödeme bilgisi</button><button class="ghost" id="heroHist">Hareketler</button></div>
+    </div>` : "";
+
+    $("#myBody").innerHTML = hero + `
+      <div class="quick">
+        <button class="q" data-scroll="reqCard"><span class="ico-wrap blue">${ic(IC.chat)}</span><b>Taleplerim</b><span>${openReq ? openReq + " açık talep" : "Talep yok"}</span></button>
+        <button class="q" data-scroll="houseCard"><span class="ico-wrap amber">${ic(IC.car)}</span><b>Araçlarım</b><span>${f.vehicles.length} kayıtlı araç</span></button>
+        <button class="q" data-scroll="ledgerCard"><span class="ico-wrap green">${ic(IC.money)}</span><b>Aidat geçmişi</b><span>${months} aylık kayıt</span></button>
+        ${(S.me.user.cams || 0) > 0 ? `<a class="q" href="#/canli"><span class="ico-wrap blue">${ic(IC.cam)}</span><b>Kameralar</b><span>${S.me.user.cams} kamera canlı</span></a>` : ""}
+      </div>
+
+      <div class="card" id="houseCard"><div class="card-h"><h2>${esc(flatName(f))}</h2>${f.kapi ? `<span class="hint">Kapı ${esc(f.kapi)}</span>` : ""}</div>
         <div class="facts"><div class="fact"><div class="l">Arsa payı</div><div class="v">${f.arsa_payi ?? "–"}</div></div><div class="fact"><div class="l">Kayıtlı kişi</div><div class="v">${f.people.filter(p => !p.move_out).length}</div></div><div class="fact"><div class="l">Kayıtlı araç</div><div class="v">${f.vehicles.length}</div></div></div>
         <h3>Kişiler</h3>${f.people.length ? `<div class="list">${f.people.map(p => `<div class="li"><span>${esc(p.name)} <span class="pill unk">${KIND_TR[p.kind]}</span></span><span class="t">${esc([p.phone, p.email].filter(Boolean).join(" · "))}</span></div>`).join("")}</div>` : '<div class="hint">Kayıt yok.</div>'}
-        <h3>Araçlar</h3>${f.vehicles.length ? `<div class="list">${f.vehicles.map(v => `<div class="li"><span class="mono">${esc(v.plate)}</span><span class="t">${esc([v.model, v.color, v.parking && "otopark " + v.parking].filter(Boolean).join(" · "))}</span></div>`).join("")}</div>` : '<div class="hint">Kayıtlı araç yok.</div>'}</div>` : '<div class="card"><div class="empty">Hesabınız henüz bir daireye bağlı değil. Yönetime bildirin.</div></div>') +
-      (r.dues ? this.duesCard(r.dues, r.methods) : "") + (S.me.user.cams > 0 ? `<div class="card"><h2>Kameralar</h2><p style="margin:0 0 10px">Yönetimin size açtığı ${S.me.user.cams} kameranın canlı görüntüsünü izleyebilirsiniz. Kayıtlar yalnızca yönetimdedir.</p><a class="btn primary" href="#/canli">Canlı izle</a> <a class="btn" href="#/harita">Haritada gör</a></div>` : "") + `
-      <div class="card"><h2>Yönetime yazın <small>bilgi düzeltme, araç değişikliği, istek</small></h2>
+        <h3>Araçlar</h3>${f.vehicles.length ? `<div class="list">${f.vehicles.map(v => `<div class="li"><span class="mono">${esc(v.plate)}</span><span class="t">${esc([v.model, v.color, v.parking && "otopark " + v.parking].filter(Boolean).join(" · "))}</span></div>`).join("")}</div>` : '<div class="hint">Kayıtlı araç yok.</div>'}</div>
+
+      ${r.dues ? this.duesCard(r.dues, r.methods) : ""}
+
+      <div class="card" id="reqCard"><div class="card-h"><h2>Yönetime yazın</h2><span class="hint">Bilgi düzeltme, araç değişikliği, istek</span></div>
         <textarea id="myReq" placeholder="Yeni aracım: 07 ABC 123, beyaz Fiat Egea"></textarea>
         <div style="margin-top:8px"><button class="primary" id="myReqGo">Gönder</button></div><div class="err" id="myErr"></div><div class="okmsg" id="myOk"></div>
         ${r.requests.length ? `<h3>Talepleriniz</h3><div class="list">${r.requests.map(q => `<div class="li" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px"><span style="white-space:pre-wrap">${esc(q.text)}</span><span class="t">${dmhm(q.ts)} ${q.status === "acik" ? '<span class="pill warn">Açık</span>' : '<span class="pill ok">Yanıtlandı</span>'}</span></div>${q.reply ? `<div class="hint">Yönetim: ${esc(q.reply)}</div>` : ""}</div>`).join("")}</div>` : ""}</div>
-      <div class="card"><h2>Şifrem</h2>${S.me.demo ? '<div class="hint">Demo modunda şifre yok.</div>' : `
+
+      <div class="card"><div class="card-h"><h2>Şifrem</h2></div>${S.me.demo ? '<div class="hint">Demo modunda şifre yok.</div>' : `
         <div class="form"><div><label for="pCur">Mevcut şifre</label><input id="pCur" type="password" autocomplete="current-password"></div>
           <div><label for="pNew">Yeni şifre</label><input id="pNew" type="password" autocomplete="new-password" placeholder="en az 8 karakter"></div>
           <button id="pGo">Değiştir</button></div><div class="err" id="pErr"></div><div class="okmsg" id="pOk"></div>`}</div>
       <div class="hint">Kişisel verileriniz KVKK kapsamında yalnızca site yönetimi ve güvenliği için kullanılır. Kamera görüntüleri sakin hesaplarına açık değildir; bir olay için yönetime başvurun.</div>`;
+
+    $("#heroOpen")?.addEventListener("click", () => ($("#payInfo") || $("#ledgerCard"))?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    $("#heroHist")?.addEventListener("click", () => $("#ledgerCard")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    $$("[data-scroll]").forEach(b => b.onclick = () => document.getElementById(b.dataset.scroll)?.scrollIntoView({ behavior: "smooth", block: "start" }));
     $("#myReqGo").onclick = async () => {
       $("#myErr").textContent = ""; $("#myOk").textContent = "";
       try { await post("/api/my/request", { text: $("#myReq").value }); this.load(); } catch (e) { $("#myErr").textContent = e.message; }

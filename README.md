@@ -69,21 +69,23 @@ The addressing was fixed (DHCP pool moved to `.150–.200`, cameras pinned to th
 
 | | |
 |---|---|
-| ![Genel bakış](docs/screenshots/genel-bakis.jpg) **Genel bakış** · status, map, alerts, recent drops | ![Canlı izleme](docs/screenshots/canli-izleme.jpg) **Canlı izleme** · picture from every camera |
-| ![Kayıtlar](docs/screenshots/kayitlar.jpg) **Kayıtlar** · find and download recordings | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the 3D view of the site |
+| ![Bugün](docs/screenshots/bugun.png) **Bugün** · what needs attention now | ![Vardiya ekranı](docs/screenshots/vardiya.png) **Vardiya ekranı** · plate lookup and the camera wall |
+| ![Canlı izleme](docs/screenshots/canli-izleme.jpg) **Canlı izleme** · picture from every camera | ![Site haritası](docs/screenshots/site-haritasi.jpg) **Site haritası** · cameras on the 3D view of the site |
+| ![Dairem](docs/screenshots/dairem.png) **Dairem** · the resident's phone home | ![Kayıtlar](docs/screenshots/kayitlar.jpg) **Kayıtlar** · find and download recordings |
 | ![Proje](docs/screenshots/proje.jpg) **Proje** · the memorial and the story of the project | |
 
 *Screenshots are from demo mode, so the camera pictures are simulated.*
 
 ## Features, page by page
 
-The menu on the left is grouped into four sections.
+The menu on the left is grouped into seven sections: Sitem (residents only), İzleme, Kayıt ve kanıt, Sakinler, Yönetim, Teknik and Hakkında. Residents get four large tabs at the bottom on a phone.
 
 ### İzleme (monitoring)
 
 | Page | What you get |
 |---|---|
-| **Genel bakış** | Cameras online, drops today, devices down, network devices, NVR disk. A large site map (click a device for its card: status, ping, drops, live view, details), devices that need attention, recent drops, shortcuts for "something happened". Admins also get a **Yaklaşan işler** card: upcoming legal dates, open tasks and contracts near expiry. |
+| **Bugün** (home) | Answers "what do I do now?" instead of listing the system state. Greeting and date, four plain-language counters (cameras working, drops today, aidat debt, upcoming legal work), **Şimdi ilgilenmeniz gerekenler** — cameras that are down, flats that are overdue, a contract about to expire, a new request — each with one action button, a **Bugün ve yaklaşan** agenda (legal dates, tasks, contracts), and four quick actions. Güvenlik sees cameras, drops and network devices; the aidat and legal cards are admin-only. |
+| **Vardiya ekranı** | The guard's screen: a large plate search box with the result card (flat, residents, phones, vehicle), today's visitors on the left, and a 2 × 3 wall of live snapshots on the right, refreshed every 4 seconds. Works for Güvenlik and Yönetici. |
 | **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 1.4 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (Esc closes) and jump to its recordings. The enlarged view refreshes **continuously**: the next picture is requested as soon as the last one arrives, up to 4 per second, one request at a time, with the actual frame rate shown next to the camera name. The grid pauses meanwhile, so the NVR load stays about the same. It is near-live, not true video (no sound); see "Live video" under Project status. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
 | **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Each device has an icon for its type (camera, access point, router, switch, NVR, repeater; cameras round, network devices square) coloured by status: green (working), amber (dropped today), red (down), grey (unknown). Clicking a device opens a small card with name, type, IP, channel, status and buttons for live view and details. Admins can drag pins and labels into place and adjust the image rotation. |
@@ -94,7 +96,7 @@ The menu on the left is grouped into four sections.
 | **Talepler** | Requests and corrections sent by residents; answer and close them. |
 | **Aidat ve tahsilat** | Monthly aidat per flat (equal, or a monthly total split by arsa payı), created for a month with one click (never twice). Payments (havale, nakit, kart) close the oldest debt first. Shows this month's charges and collections, total receivable, overdue amounts and flats, the oldest due date, and an estimated late fee (KMK 20, up to 5% a month, only calculated, not charged). Full account statement per flat; wrong entries can be deleted (logged). Bulk actions on selected flats: prepare reminders, write a message, mark paid in full, add an extra charge (repair share, late fee). Settings: amount, due day, late-fee rate, the site's bank account (IBAN). CSV export. |
 | **Sakin kamera erişimi** | Master switch (off by default) for residents watching cameras. Default access per column: "Tüm sakinler" (shared areas such as the main gate) and per blok (that blok's entrance, elevator, parking); "Kamera adına göre öner" ticks cameras whose name contains the blok. A flat can get its own list in Daireler ve kişiler → Düzenle. Residents get the live picture only; the first view of each camera per day is logged. |
-| **Dairem** (residents) | The resident's own flat, household and vehicles, a form to write to the management, their requests with answers, and password change. |
+| **Dairem** (residents) | A phone-first home: greeting, flat chip, one large balance card ("Ödenecek tutar", overdue in amber, IBAN/Ödeme bilgisi and Hareketler buttons), four big tiles (requests, vehicles, aidat history, cameras if allowed), household and vehicles, aidat details and ledger, a form to write to the management, requests with answers, and password change. |
 
 ### Kayıt ve kanıt (recordings and evidence)
 
@@ -109,7 +111,7 @@ The menu on the left is grouped into four sections.
 | Page | What you get |
 |---|---|
 | **Takvim ve görevler** | A year calendar of the manager's KMK duties: işletme projesi (KMK 37), genel kurul invitation at least 15 days ahead, ordinary general assembly in January, annual accounts to the kurul (KMK 39), notary closing of the decision book by end of January (KMK 36), year-end cash/bank reconciliation and monthly elevator maintenance. Each duty can be ticked off for the year (or the month). You add your own dated tasks, with one-click templates for the practical yearly duties (elevator A-type inspection, insurance renewal, İSG, fire extinguishers). The page says plainly that it is a helper, **not legal advice**; the yönetim planı and a lawyer have the final word. |
-| **Sözleşmeler ve poliçeler** | Contracts and insurance policies with provider, start/end dates, amount, note and an attached document. Shows valid / expiring within 30 days / expired, with a renewal warning, and feeds the alert card on Genel bakış. |
+| **Sözleşmeler ve poliçeler** | Contracts and insurance policies with provider, start/end dates, amount, note and an attached document. Shows valid / expiring within 30 days / expired, with a renewal warning, and feeds the alert card on Bugün. |
 | **Belgeler** | Document archive: upload PDF, Word, Excel, images or text (max 10 MB), with category and note; download and delete. Files are kept in `data/belgeler/`, which is part of the `data/` backup. Uploads, downloads and deletions are written to the audit log. Admin only. |
 | **Bakım günlüğü** | Notes on what was done on site, by whom and when, optionally attached to a device. |
 | **NVR arayüzü** | The Dahua NVR's own web interface inside the panel, with an "open in new tab" button for NVR firmware that refuses to be embedded. |
@@ -196,7 +198,7 @@ Everyone logs in with their **own username and password**. Their name appears in
 
 ## If something happens: getting recordings and logs
 
-1. **Genel bakış**: which camera is down, and since when?
+1. **Bugün**: which camera is down, and since when?
 2. **Olaylar ve loglar**: find the time range of the incident (panel drops and NVR logs).
 3. **Kayıtlar**: choose the camera and time, then **İndir** the files. They are Dahua `.dav` files; open them with **Dahua SmartPlayer** (VLC plays most of them).
 4. **Dışa aktar → Tam paket**: download the zip covering those days. It contains:
@@ -319,7 +321,8 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 
 - **Done:** monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, user accounts, memorial section, demo mode, site test toolkit.
 - **Done (18 Nov):** 8 / 16 / 32 view grid on Canlı izleme, device-type icons, readable labels and a device card on the maps, collapsible menu, device inventory editor; roles Yönetici / Güvenlik / Site sakini; flats, people and vehicles registry with Excel/CSV import, plate lookup and visitor log; messages (WhatsApp, e-mail, printable letters with signature list); resident requests; aidat and collections with reminders and bulk actions; resident camera access.
-- **Done (18 Nov, Phase C):** yearly calendar of the manager's legal duties with tickable KMK items and dated tasks, contracts and insurance policies with expiry alerts, document archive; "Yaklaşan işler" alerts on Genel bakış.
+- **Done (18 Nov, Phase C):** yearly calendar of the manager's legal duties with tickable KMK items and dated tasks, contracts and insurance policies with expiry alerts, document archive; "Yaklaşan işler" alerts on the home page.
+- **Done (18 Nov, UI refresh):** new task-first **Bugün** home (attention list, counters, agenda, quick actions), **Vardiya ekranı** for security (plate search + 6-camera wall), phone-first **Dairem** with a large balance card and bottom tabs for residents, calmer type and spacing, 44 px touch targets, plain-language labels, and a reduced menu (technical pages under **Teknik**).
 - **Tests:** `tests/api_smoke.py` runs 88 checks (roles, KVKK limits, import, plate lookup, devices, aidat math, camera access, calendar, contracts, documents) against a demo server.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Not yet tested against the real NVR** on site; see TEST-PLAN.md step 7.
