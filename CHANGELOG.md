@@ -1,6 +1,10 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, local-only project.
+
+## 3.3 — 21 November 2026
+- **Camera frames doubled** (not more): enlarged view up to **8 snapshots/s** (NVR-limited, one request at a time), grid scheduler ~2.8 requests/s with 2 in flight, Vardiya wall every 2 s and its enlarged view every 450 ms.
+- Still near-live snapshots, not true video; the measured rate is shown next to the camera name.
 
 ## 3.2 — 19 November 2026
 - **Proje → Nasıl kullanılır** (`#/nasil`, old `#/proje` redirects).
@@ -47,3 +51,4 @@ All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, l
 
 ## 1.0 — 18 November 2026
 - First working panel: monitoring, drop history, map, recordings, logs, exports, download log, maintenance log, accounts, memorial, demo mode, site test toolkit.
+
