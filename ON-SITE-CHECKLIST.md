@@ -174,8 +174,8 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 
 If something fails, run `python adalya_test.py nvr --user admin` and bring back the `results/nvr-*` folder; it shows exactly what the NVR answers.
 
-### 2.4 Live video: what does the NVR offer? (15 min)
-These three tests decide how real live video gets into the panel (smooth video through a small media server such as go2rtc, or the NVR's own MJPEG stream). Nothing is changed on the NVR; only read.
+### 2.4 Live video: confirm the stream parameters (15 min)
+Live video now ships as ffmpeg → MJPEG (3.4). These tests confirm the sub-stream settings it depends on and whether the NVR can serve MJPEG directly. Nothing is changed on the NVR; only read.
 
 Use the **view-only NVR user** from 2.2 for these tests, not the admin account. Pick one good camera (e.g. channel 3, Güvenlik) and one weak one (channel 9, Güney çevre 1).
 
@@ -195,7 +195,7 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
    | | | |
    | | | |
 
-   Browsers play **H.264** reliably, H.265 only on some devices. Target: main stream H.265 (recording, saves Wi-Fi), **sub stream H.264**, about 640×360–704×576, 10–15 FPS, 256–512 kbps. Don't change it today unless asked; just note what is there and whether the sub stream codec can be set to H.264 (☐ yes ☐ no) and to MJPEG (☐ yes ☐ no).
+   Browsers play **H.264** reliably, H.265 only on some devices; the panel avoids that by transcoding the HEVC sub stream to MJPEG with ffmpeg, so the sub-stream codec only sets the CPU cost. Target for the box: main stream H.265 (recording, saves Wi-Fi), **sub stream H.264** or HEVC, about 640×360–704×576, 10–15 FPS, 256–512 kbps. Don't change it today unless asked; just note what is there and whether the sub stream codec can be set to H.264 (☐ yes ☐ no) and to MJPEG (☐ yes ☐ no).
 3. [ ] **MJPEG in a browser** (the browser asks for the NVR login):
    ```
    http://192.168.0.254/cgi-bin/mjpg/video.cgi?channel=3&subtype=1

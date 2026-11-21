@@ -7,7 +7,7 @@ Everything here is read-only. Nothing changes a device. Results land in the `res
 - [ ] Copy this whole `adalya-toolkit` folder to the laptop (not into OneDrive).
 - [ ] Update `devices.json` if any IP changed since the last visit.
 - [ ] Bring an Ethernet cable. Test from a **wired** connection to the Ruijie switch, so the laptop's own Wi-Fi doesn't distort the results.
-- [ ] Confirm the installed build: open **Nasıl kullanılır** and check the version at the bottom (**3.2**), or `/api/me` → `version`.
+- [ ] Confirm the installed build: open **Nasıl kullanılır** and check the version at the bottom (**3.4**), or `/api/me` → `version`.
 - [ ] Phone test once before leaving: log in as Yönetici and as Güvenlik; the top bar/menu, Vardiya and camera wall should work. Add it to the home screen if wanted.
 
 ## 1. Baseline health check (2 min)
