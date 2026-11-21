@@ -34,8 +34,17 @@ def _latest(out_dir, kind):
 
 
 def load_monitors(out_dir, limit=10):
-    """Aggregate every monitor-*.jsonl in the folder (newest first)."""
-    files = sorted(glob.glob(os.path.join(out_dir, "monitor-*.jsonl")))[-limit:]
+    """Aggregate monitor-*.jsonl files (recursively, newest first, no duplicates).
+
+    Works on the collector folder or on the preserved raw-data tree, so a report can be
+    rebuilt from raw copies alone.
+    """
+    found = glob.glob(os.path.join(out_dir, "monitor-*.jsonl"))
+    found += glob.glob(os.path.join(out_dir, "**", "monitor-*.jsonl"), recursive=True)
+    unique = {}
+    for path in found:
+        unique.setdefault(os.path.basename(path), path)
+    files = sorted(unique.values())[-limit:]
     devices, nvr_series, transitions = {}, [], 0
     for path in files:
         try:

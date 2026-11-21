@@ -92,10 +92,13 @@ def ingest(scan_id=None):
             files[kind] = _copy(src, dst)
         else:
             files[kind] = None
-    # monitoring history is append-only in the collector; keep every file in this scan
+    # monitoring history is append-only in the collector; copy only files not preserved yet
+    already = {os.path.basename(p) for p in glob.glob(os.path.join(RAW, "historical", "*", "monitor-*.jsonl"))}
     monitors = sorted(glob.glob(os.path.join(RESULTS, "monitor-*.jsonl")))
     mon_entries = []
     for src in monitors[-24:]:
+        if os.path.basename(src) in already:
+            continue
         dst = os.path.join(RAW, "historical", scan_id, os.path.basename(src))
         mon_entries.append(_copy(src, dst))
     files["monitor"] = mon_entries
@@ -234,7 +237,11 @@ def build_performance(perf, monitors):
 
 def _recent_monitor_rows(limit_files=6):
     rows = []
-    files = sorted(glob.glob(os.path.join(RESULTS, "monitor-*.jsonl")))[-limit_files:]
+    found = glob.glob(os.path.join(RAW, "historical", "*", "monitor-*.jsonl"))
+    unique = {}
+    for path in found:
+        unique.setdefault(os.path.basename(path), path)
+    files = sorted(unique.values())[-limit_files:]
     for path in files:
         try:
             with open(path, encoding="utf-8") as f:
@@ -342,7 +349,7 @@ def build(scan_id=None, users=100):
     raw_nvr = _load(os.path.join(RAW, "nvr", scan_id, "nvr.json")) or _load(latest("nvr"))
     raw_disc = _load(os.path.join(RAW, "discovery", scan_id, "discover.json")) or _load(latest("discover"))
     raw_perf = _load(os.path.join(RAW, "network-devices", scan_id, "perf.json")) or _load(latest("perf"))
-    monitors = audit_report.load_monitors(RESULTS)
+    monitors = audit_report.load_monitors(RAW)
     analysis = audit_report.analyze(raw_disc, raw_nvr, raw_perf, monitors, users=users)
 
     inventory = build_inventory(raw_disc, raw_nvr, raw_perf, monitors)
