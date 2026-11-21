@@ -371,6 +371,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 | Document | For |
 |---|---|
 | [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) | The next site visit, step by step: cameras first (reservations, old-subnet cameras, offline cameras, weak signal, AP facts, NVR health), then connecting the panel to the real NVR, testing every page, and the live-video tests (RTSP, codecs, MJPEG) |
+| [AUDIT.md](AUDIT.md) | The infrastructure audit system: discovery, NVR inspection, performance, long-running monitoring, HTML/JSON report and the 100-user capacity model |
 | [TEST-PLAN.md](TEST-PLAN.md) | How to use the site test toolkit and test each panel page |
 | [INSTALL.md](INSTALL.md) | Installing the panel on the always-on computer, fixed IP, autostart, accounts, backups |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each version, from 1.0 to the current build |
@@ -384,6 +385,8 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 | `panel.html` | The web interface |
 | `nvr.py` | Dahua NVR client (and the demo NVR) |
 | `adalya_test.py` | Site test toolkit |
+| `adalya_audit.py` | Infrastructure audit CLI (discover / nvr / perf / monitor / report) |
+| `audit_net.py`, `audit_nvr.py`, `audit_report.py` | Audit modules: network probes, deep NVR read, analysis + HTML report |
 | `devices.json` | Watched devices, channels, map positions |
 | `site.json` | Site name, memorial section, map labels, map rotation |
 | `site-plan.webp` | Map background (3D render of the site) |

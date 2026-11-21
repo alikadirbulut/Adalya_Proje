@@ -244,7 +244,14 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
 - [ ] From a phone on the site Wi-Fi: `http://<laptop-ip>:8080` (or the port you chose) opens and logs in? ☐
 - [ ] Create one **Güvenlik** account for security and test it on their device.
 
-### 2.7 Leave it running
+### 2.7 Full infrastructure audit: the baseline (30–60 min)
+Once the cameras and the NVR are stable, capture the baseline that the next months will be compared against:
+```
+python adalya_audit.py full --user admin --monitor-min 30 --users 100
+```
+Discovery → NVR inspection → performance → 30 min of monitoring → `results/audit/report-*.html` (plus JSON and inventory CSV). It is read-only and asks the NVR password once. If time allows, run `python adalya_audit.py perf` before and after the fixes and keep both files. Details in [AUDIT.md](AUDIT.md).
+
+### 2.8 Leave it running
 - [ ] Keep the panel running during the 1.7 measurements and compare its **Bugün kopma** and **24 sa erişim** columns with the watch log.
 - [ ] Write what was done today in **Bakım günlüğü**.
 
@@ -254,6 +261,7 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
 
 - [ ] Photos: NVR screen (before/after), router reservation list, NVR channel list
 - [ ] `results/` folder (check, drops, watch summaries, nvr probe)
+- [ ] `results/audit/` folder (discover, nvr, perf, monitor JSONL, report HTML/JSON, inventory CSV)
 - [ ] Router config backup file (keep private)
 - [ ] Filled-in tables from 1.2, 1.5, 1.6, 1.7, 1.8, 2.3, 2.4 (live video: RTSP, codecs, MJPEG)
 - [ ] NVR BPS screenshot and firmware version

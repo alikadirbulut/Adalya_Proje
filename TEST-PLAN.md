@@ -127,10 +127,17 @@ On the day:
 - [ ] **Ayarlar → Proje bilgileri**: add the support contact and, if wanted, a few words for Esin Noğan.
 - [ ] Write what you did in **Bakım günlüğü**.
 
+## 8. Full audit and report (after the fixes)
+```
+python adalya_audit.py full --user admin --monitor-min 30 --users 100
+```
+This is the umbrella run: subnet discovery compared with `devices.json`, deep read-only NVR inspection, per-device latency/loss/jitter, 30 minutes of monitoring, then a self-contained HTML report plus JSON and inventory CSV in `results/audit/`. Read-only, one NVR login, password never saved. Commands and output schema are in [AUDIT.md](AUDIT.md).
+
 ## Results to bring back
 - [ ] `check-*.csv` (baseline)
 - [ ] `drops-*.csv` and `watch-summary-*.csv` (before and after the AP)
 - [ ] `nvr-*` folder
+- [ ] `results/audit/` (discover, nvr, perf, monitor JSONL, report HTML/JSON, inventory CSV)
 - [ ] SNMP results (copy from the screen)
 - [ ] Router: ISP name, firmware version, screenshot of SNMP / remote management settings
 - [ ] NVR: Info → BPS screenshot (live bitrate per channel)

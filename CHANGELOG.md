@@ -2,6 +2,12 @@
 
 All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, local-only project.
 
+## Audit toolkit — 21 November 2026
+- **`adalya_audit.py`**: read-only infrastructure audit in five stages — `discover` (ICMP/ARP/port sweep compared with `devices.json`), `nvr` (~14 Dahua API probes: model, firmware, serial, network, per-channel encode/state, storage, logs), `perf` (loss, RTT, jitter, TCP/HTTP latency, optional measured sub-stream bitrate), `monitor` (JSONL history with NVR state/disk sampling) and `report` (self-contained HTML + JSON + inventory CSV).
+- **Analysis, not just collection:** offline cameras, link errors in the NVR log, packet loss/high latency/jitter, disk pressure, duplicate MACs, wrong MACs, DHCP-pool devices, missing/unknown inventory, and a 100-user capacity model with printed assumptions (API vs video separated).
+- Modules: `audit_net.py` (network probes, monitoring), `audit_nvr.py` (deep NVR read), `audit_report.py` (findings, capacity, HTML). It reuses `adapta_test.py` primitives and `nvr.py` instead of duplicating them.
+- Safety: read-only, single NVR login attempt, password never written to disk, rate-limited probes, per-probe fault tolerance. Documented in `AUDIT.md`.
+
 ## 3.5 — 21 November 2026
 - **NVR load governor.** On the real box the panel's snapshot polling made cameras drop off the NVR (its monitor showed "network disconnected"). Every snapshot makes the NVR open a fresh sub-stream to that camera; an 8 fps enlarged view, a 16-tile wall and a 2 s Vardiya rebuild were too much for the weak Wi-Fi cameras.
   - Server: **one snapshot in flight** at a time, at most **4 per second** in total (`--snap-rate`), a 0.25 s reuse cache, and a channel that answers 400/timeout is **benched** for 30 s → 2 min → 10 min instead of being retried on every refresh.
