@@ -46,6 +46,16 @@ python adalya_test.py channels --user admin
 ```
 Same login rules as step 3 (one attempt, stops on refusal). It asks the NVR for **one snapshot per channel, 2 seconds apart**, so the box and the Wi-Fi cameras never see a burst. It prints the NVR's own channel names and marks `OK` for channels that return a picture, then saves `results/channels-*.csv`. Run it with the panel's camera pages closed. Put the OK channels into `devices.json` (**Ağ cihazları → Cihaz envanteri**) and remove the ones without a camera; keep the channel numbers.
 
+## 3c. Person / vehicle events (10 min)
+```
+python adalya_test.py events --user admin --minutes 10
+```
+While it listens, walk in front of a camera and drive a car past another. It prints every event the NVR pushes (code, action, channel, **Human/Vehicle**) and saves the raw payloads in `results/events-*.jsonl`.
+
+The decisive detail is `ObjectType`: if it says `Human`/`Vehicle`, the NVR really classifies objects and the panel can show "kişi/araç" events. If events only say `VideoMotion` with no object type, the cameras are doing plain motion detection — usable, but not a person/vehicle feed. Also note which channels produce events: those are the ones with Smart Motion / IVS enabled (NVR → Event).
+
+Keep it under ~10 minutes and don't run it while the panel's camera pages are busy.
+
 ## 4. SNMP tests (1 min each)
 ```
 python adalya_test.py snmp --host 192.168.0.1

@@ -10,6 +10,7 @@ All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, l
   - Canlı izleme grid: channels that fail are skipped for 30 s on the client too.
   - `--demo` now resets `config.json` as well, so a second demo/test run starts from the same state.
 - **`python adalya_test.py channels`**: asks the NVR for one channel at a time (2 s apart by default), prints the NVR's channel names and which channels really return a picture, and saves `results/channels-*.csv`. Also fixes the stale `.23` default host in the `nvr` command.
+- **`python adalya_test.py events`**: listens to the NVR's smart-event push (motion, tripwire, human/vehicle) for a few minutes and saves the raw payloads (`results/events-*.jsonl`). This is the capture that decides the person/vehicle feature: if `ObjectType` says `Human`/`Vehicle`, the panel can show real object events.
 - 210 API checks still pass, plus a governor self-test (serialisation, budget, cache, cool-down).
 
 ## 3.4 — 21 November 2026

@@ -195,6 +195,15 @@ python adalya_test.py channels --user admin
 ```
 It prints the NVR's own channel names and marks `OK` for channels with a picture; results are saved in `results/channels-*.csv`. Write the OK channels into `devices.json` (**Ağ cihazları → Cihaz envanteri**) and remove channels that have no camera. If a channel is OK here but shows nothing in the panel, the channel name/number in `devices.json` is wrong.
 
+### 2.3c Person / vehicle detection (10 min)
+The cameras are advertised as detecting people and cars. This is the test that proves it and captures the exact payload the panel would consume:
+```
+python adalya_test.py events --user admin --minutes 10
+```
+While it runs, walk in front of a camera, then drive a car past one. Leave with the `results/events-*.jsonl` file. On the NVR, also check **Event → Smart Motion / IVS** per channel: enabled? Human/Vehicle classification on? Which channels? Write the list here: ____________
+
+If the payload contains `"ObjectType": "Human"` / `"Vehicle"`, the feature is straightforward. If it only sends `VideoMotion`, the cameras detect motion, not objects — still useful, but the panel must say "hareket", not "kişi".
+
 ### 2.4 Live video: confirm the stream parameters (15 min)
 Live video now ships as ffmpeg → MJPEG (3.4). These tests confirm the sub-stream settings it depends on and whether the NVR can serve MJPEG directly. Nothing is changed on the NVR; only read.
 

@@ -5,6 +5,7 @@ Commands:
   python adalya_test.py watch [--only ...]    continuous ping log, records every drop with its duration
   python adalya_test.py nvr --user admin      probe the Dahua NVR HTTP API (asks for the password)
   python adalya_test.py channels              find which NVR channels have a camera, one snapshot at a time
+  python adalya_test.py events                listen to the NVR's person/vehicle/motion event push
   python adalya_test.py snmp --host IP        test whether a device answers SNMP
 
 Nothing here changes any device. Passwords are asked at runtime and never saved.
@@ -450,6 +451,150 @@ def cmd_channels(args):
     print("Next: put those channel numbers into devices.json (Ağ cihazları → Cihaz envanteri).")
 
 
+# ---------------------------------------------------------------- live events (Dahua eventManager attach)
+
+EVENT_CODES = ("VideoMotion,CrossLineDetection,CrossRegionDetection,SmartMotionHuman,"
+               "SmartMotionVehicle,AlarmLocal,VideoLoss")
+
+
+def _stream_auth(path, user, password, challenge):
+    """Digest (or Basic) header for a streaming GET."""
+    if not challenge.lower().startswith("digest"):
+        import base64
+        return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+    a = _parse_auth(challenge)
+    realm, nonce, qop = a.get("realm", ""), a.get("nonce", ""), a.get("qop", "")
+    ha1 = hashlib.md5(f"{user}:{realm}:{password}".encode()).hexdigest()
+    ha2 = hashlib.md5(f"GET:{path}".encode()).hexdigest()
+    if "auth" in qop:
+        cnonce, nc = os.urandom(8).hex(), "00000001"
+        resp = hashlib.md5(f"{ha1}:{nonce}:{nc}:{cnonce}:auth:{ha2}".encode()).hexdigest()
+        h = (f'Digest username="{user}", realm="{realm}", nonce="{nonce}", uri="{path}", '
+             f'qop=auth, nc={nc}, cnonce="{cnonce}", response="{resp}"')
+    else:
+        resp = hashlib.md5(f"{ha1}:{nonce}:{ha2}".encode()).hexdigest()
+        h = f'Digest username="{user}", realm="{realm}", nonce="{nonce}", uri="{path}", response="{resp}"'
+    if "opaque" in a:
+        h += f', opaque="{a["opaque"]}"'
+    return h
+
+
+def open_event_stream(host, path, user, password, port=80, timeout=90):
+    """Open a long-lived GET and return (conn, response). One auth attempt only."""
+    conn = http.client.HTTPConnection(host, port, timeout=timeout)
+    conn.request("GET", path)
+    r = conn.getresponse()
+    if r.status == 401:
+        hdr = r.getheader("WWW-Authenticate", "")
+        r.read()
+        conn.close()
+        conn = http.client.HTTPConnection(host, port, timeout=timeout)
+        conn.request("GET", path, headers={"Authorization": _stream_auth(path, user, password, hdr)})
+        r = conn.getresponse()
+    if r.status != 200:
+        r.read()
+        conn.close()
+        raise OSError(f"HTTP {r.status}")
+    return conn, r
+
+
+def iter_events(r, chunk_size=4096):
+    """Yield parsed JSON objects from a Dahua multipart event stream."""
+    buf = b""
+    while True:
+        chunk = r.read(chunk_size)
+        if not chunk:
+            return
+        buf += chunk
+        while True:
+            i = buf.find(b"--myboundary")
+            if i < 0:
+                if len(buf) > 1_000_000:
+                    buf = buf[-4096:]
+                break
+            j = buf.find(b"\r\n\r\n", i)
+            if j < 0:
+                break
+            head = buf[i:j].decode("latin-1", "replace")
+            m = re.search(r"Content-Length:\s*(\d+)", head, re.I)
+            if not m:
+                buf = buf[j + 4:]
+                continue
+            n = int(m.group(1))
+            start = j + 4
+            if len(buf) < start + n:
+                break
+            body, buf = buf[start:start + n], buf[start + n:]
+            try:
+                yield json.loads(body)
+            except ValueError:
+                yield {"_raw": body.decode("latin-1", "replace")}
+
+
+def event_summary(ev):
+    data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+    code = str(ev.get("code") or ev.get("Code") or "?")
+    action = str(ev.get("action") or ev.get("Action") or "")
+    ch = data.get("Channel", data.get("channel", ""))
+    obj = data.get("ObjectType", data.get("ObjectTypes", data.get("objectType", "")))
+    name = data.get("Name", data.get("name", ""))
+    return code, action, ch, obj, name
+
+
+def cmd_events(args):
+    """Listen to the NVR's smart-event push stream for a few minutes.
+
+    Dahua NVRs push events (motion, tripwire, intrusion, human/vehicle) on a long-lived
+    HTTP GET. This prints them and saves every raw payload, so we can see exactly what
+    the box sends before building the panel feature.
+    """
+    password = getpass.getpass(f"Password for {args.user}@{args.host} (not saved): ")
+    os.makedirs(OUT, exist_ok=True)
+    codes = re.sub(r"\s+", "", args.codes) or EVENT_CODES
+    path = f"/cgi-bin/eventManager.cgi?action=attach&codes=[{codes}]&heartbeat=5"
+    csvless = os.path.join(OUT, f"events-{stamp()}.jsonl")
+    print(f"\nListening on {args.host} for {args.minutes:g} min. Walk in front of a camera / drive past one.\n")
+    try:
+        conn, r = open_event_stream(args.host, path, args.user, password, args.port)
+    except OSError as e:
+        print(f"Could not open the event stream: {e}")
+        print("If this says HTTP 400, the NVR may not support eventManager attach or needs different codes.")
+        return
+    deadline = time.time() + args.minutes * 60
+    seen = {}
+    lines = 0
+    print(f"{'Time':<10} {'Code':<22} {'Action':<7} {'Ch':<4} {'Object':<8} Name")
+    print("-" * 78)
+    with open(csvless, "w", encoding="utf-8") as f:
+        try:
+            for ev in iter_events(r):
+                if time.time() > deadline:
+                    break
+                code, action, ch, obj, name = event_summary(ev)
+                if code.lower() == "heartbeat":
+                    continue
+                seen[code] = seen.get(code, 0) + 1
+                lines += 1
+                print(f"{datetime.now():%H:%M:%S}  {code:<22} {action:<7} {str(ch):<4} {str(obj):<8} {name}")
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+                f.flush()
+        except (OSError, KeyboardInterrupt):
+            pass
+        finally:
+            try:
+                r.close()
+                conn.close()
+            except OSError:
+                pass
+    print("-" * 78)
+    if lines:
+        print("Event types: " + ", ".join(f"{k} ×{v}" for k, v in seen.items()))
+    else:
+        print("No events in that window. Either nobody moved, the smart event is not enabled,")
+        print("or the NVR does not support this stream (check Event → Smart Motion / IVS).")
+    print(f"Raw payloads: {csvless}")
+
+
 def cmd_snmp(args):
     for community in args.community.split(","):
         res = snmp_get(args.host, community.strip())
@@ -488,6 +633,14 @@ def main():
     c.add_argument("--delay", type=float, default=2.0, help="seconds between channels (default 2)")
     c.add_argument("--timeout", type=float, default=6.0, help="per-request timeout in seconds")
     c.set_defaults(func=cmd_channels)
+
+    e = sub.add_parser("events", help="listen to NVR person/vehicle/motion events for a few minutes")
+    e.add_argument("--host", default="192.168.0.254")
+    e.add_argument("--port", type=int, default=80)
+    e.add_argument("--user", default="admin")
+    e.add_argument("--minutes", type=float, default=10, help="how long to listen (default 10)")
+    e.add_argument("--codes", default=EVENT_CODES, help="comma list of Dahua event codes")
+    e.set_defaults(func=cmd_events)
 
     s = sub.add_parser("snmp", help="test SNMP on a device")
     s.add_argument("--host", required=True)
