@@ -107,7 +107,11 @@ Cameras: Güney çevre 1 (`.106`), Güney çevre 2 (`.108`), Cblok (`.12`).
    python adalya_test.py watch --only 106,108,12
    ```
 2. [ ] **Tune** (camera web page or NVR remote settings): H.265, main stream **1–1.5 Mbps**, **10–15 FPS**.
-3. [ ] **Repeaters**: give the Tenda/TP-Link a different SSID from the router, so cameras stop hopping; put them on channel 1 or 6 (router stays on 11).
+3. [ ] **Repeaters**: a **single-radio** extender (Tenda T10, TL-WA855RE) **must repeat on the router's channel** — it cannot receive on 11 and transmit on 1 with one radio. Do **not** change the repeaters' channel; that just breaks their uplink. What you can do today:
+   - give them their own SSID so cameras stop hopping between router and repeater (helps stability, not airtime);
+   - move a repeater closer to the router (the Tenda uplink is RSSI 34 — too weak; every hop also **doubles** the airtime a camera stream uses);
+   - check whether the Tenda/TP-Link can run in **AP mode over Ethernet**; if one can be wired, it becomes a real AP and *then* channel 1 or 6 makes sense.
+   Channels can only be separated with **wired-backhaul APs**; with these repeaters everything stays on the router's single 2.4 GHz channel.
 4. [ ] **After**: 30 minutes of the same watch log.
 
 | Camera | RSSI before | Drops / 30 min before | Uptime before | RSSI after | Drops / 30 min after | Uptime after |
@@ -115,6 +119,15 @@ Cameras: Güney çevre 1 (`.106`), Güney çevre 2 (`.108`), Cblok (`.12`).
 | Güney çevre 1 (.106) | 18 | | | | | |
 | Güney çevre 2 (.108) | 25 | | | | | |
 | Cblok (.12) | 28 | | | | | |
+
+### 1.7b Router: who is on which radio? (10 min)
+The router is not broken — it is the **shared medium**. One 2.4 GHz radio (channel 11) carries all 18 cameras, both repeaters and every resident phone. A camera behind a repeater uses the channel **twice** (camera→repeater, repeater→router), so each repeater camera costs double airtime.
+
+- [ ] Router **Wireless → Client list**: for each camera, note RSSI, Tx/Rx rate, and whether it sits on the router or a repeater (if the UI shows it).
+- [ ] Phone Wi-Fi analyser: channel occupancy on 1 / 6 / 11 and how many neighbour networks. Is 11 actually the quietest?
+- [ ] Do the three weak cameras (`.106`, `.108`, `.12`) connect to the router or to a repeater? If a camera is on a repeater while the router is closer, that is a placement problem, not a camera problem.
+- [ ] Note the repeater uplink RSSI (Tenda was 34) — below ~40 the repeater halves the usable throughput.
+- [ ] If 11 is crowded, move the **whole** 2.4 GHz cell (router) to 1 or 6; the repeaters follow automatically because they repeat the same channel.
 
 ### 1.8 Access point: collect what's needed to decide (15 min)
 The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only collects the facts:
