@@ -1153,12 +1153,12 @@ PAGES.vardiya = {
         this.loadVisitors();
       } catch (e) { $("#qgErr").textContent = e.message; }
     };
-    if (n.connected) { this.loadCams(); every(() => this.loadCams(), 2000); }
+    if (n.connected) { this.buildCams(); every(() => this.tickCams(), 600); }
     $$("#shiftSize button").forEach(b => b.onclick = () => {
       this.size = +b.dataset.v;
       shiftSizeSave(this.size);
       $$("#shiftSize button").forEach(x => x.classList.toggle("on", x === b));
-      this.loadCams();
+      this.buildCams();
     });
     this.loadVisitors();
     this.loadPasses();
@@ -1191,15 +1191,40 @@ PAGES.vardiya = {
       });
     } catch (e) { $("#shiftPkgs").innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   },
-  loadCams() {
+  buildCams() {
     const box = $("#shiftCams"); if (!box) return;
     const cols = this.size <= 4 ? 2 : this.size <= 6 ? 3 : this.size <= 8 ? 4 : 5;
     box.style.setProperty("--cols", cols);
+    this.camFail = {};
+    this.camCursor = 0;
     box.innerHTML = cams().slice(0, this.size).map(c => {
       const live = c.up !== false;
-      return `<div class="feed" data-ch="${c.channel}"><img src="/api/nvr/snapshot?ch=${c.channel}" alt="${esc(c.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'"><div class="offline" style="display:none">Görüntü yok</div><div class="nm ${live ? "" : "bad"}"><span>${esc(c.name)}</span><span><i></i>${live ? "Canlı" : "Kapalı"}</span></div></div>`;
+      return `<div class="feed" data-ch="${c.channel}"><img src="/api/nvr/snapshot?ch=${c.channel}" alt="${esc(c.name)}"><div class="offline" style="display:none">Görüntü yok</div><div class="nm ${live ? "" : "bad"}"><span>${esc(c.name)}</span><span><i></i>${live ? "Canlı" : "Kapalı"}</span></div></div>`;
     }).join("");
-    $$("#shiftCams .feed").forEach(el => el.onclick = () => this.openBig(+el.dataset.ch));
+    $$("#shiftCams .feed").forEach(el => {
+      const ch = +el.dataset.ch, img = el.querySelector("img");
+      img.onerror = () => {
+        this.camFail[ch] = Date.now() + 30000;
+        img.style.display = "none";
+        el.querySelector(".offline").style.display = "grid";
+      };
+      img.onload = () => { el.querySelector(".offline").style.display = "none"; img.style.display = ""; };
+      el.onclick = () => this.openBig(ch);
+    });
+  },
+  /* One tile per tick, round robin, and never while the enlarged view is open: six tiles
+     refresh every ~3.6 s, ten every ~6 s, and the NVR never sees six image requests at
+     once. A channel that fails is skipped for 30 s. */
+  tickCams() {
+    const box = $("#shiftCams"); if (!box || document.hidden || this.big) return;
+    const tiles = $$("#shiftCams .feed"); if (!tiles.length) return;
+    for (let i = 0; i < tiles.length; i++) {
+      const el = tiles[(this.camCursor++) % tiles.length];
+      const ch = +el.dataset.ch;
+      if ((this.camFail?.[ch] || 0) > Date.now()) continue;
+      el.querySelector("img").src = `/api/nvr/snapshot?ch=${ch}&t=${Date.now()}`;
+      return;
+    }
   },
   openBig(ch) {
     const c = cams().find(x => x.channel === ch); if (!c) return;
@@ -1211,24 +1236,30 @@ PAGES.vardiya = {
       $("#sbClose").onclick = () => this.closeBig();
     }
     this.big = ch;
+    this.bigBusy = false;
     box.hidden = false;
     $("#sbName").textContent = c.name;
     $("#sbInfo").textContent = `${c.channel}. kanal · ${statusText(c)}`;
     this.refreshBig();
     clearInterval(this.bigTimer);
-    this.bigTimer = setInterval(() => this.refreshBig(), 450);
+    this.bigTimer = setInterval(() => this.refreshBig(), 700);
     timers.push(this.bigTimer);
     document.onkeydown = e => { if (e.key === "Escape") this.closeBig(); };
   },
   refreshBig() {
     const img = $("#sbImg"), c = cams().find(x => x.channel === this.big);
-    if (!img || !c) return;
+    if (!img || !c || document.hidden || this.bigBusy) return;
+    this.bigBusy = true;
+    const done = () => { clearTimeout(this.bigTO); this.bigBusy = false; };
+    this.bigTO = setTimeout(done, 8000);
+    img.onload = done; img.onerror = done;
     img.src = `/api/nvr/snapshot?ch=${c.channel}&t=${Date.now()}`;
   },
   closeBig() {
     clearInterval(this.bigTimer);
+    clearTimeout(this.bigTO);
     timers = timers.filter(t => t !== this.bigTimer);
-    this.big = null;
+    this.big = null; this.bigBusy = false;
     const box = $("#shiftBig"); if (box) box.hidden = true;
     document.onkeydown = null;
   },
@@ -1330,7 +1361,7 @@ PAGES.canli = {
             <div class="bigbar"><span><b id="bigTitle"></b> <span id="bigFps" style="opacity:.75;font-size:12px;margin-left:6px"></span></span><span style="display:flex;gap:6px">${isResident() ? "" : '<a class="btn" id="bigRec">Kayıtları aç</a>'}<button id="bigLive">Canlı video</button><button id="bigClose">Kapat (Esc)</button></span></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek). Bir kareye tıklayınca büyür; büyük görüntü saniyede ${BIG_MAX_FPS} kareye kadar sürekli yenilenir. <b>Canlı video</b> düğmesi RTSP'den gerçek akış açar (ffmpeg gerekir, gecikme ~1 sn); olmazsa anlık kareye döner. ← → ile sayfa değişir.</div>
+        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek; sunucu toplamda bir tavan uygular, varsayılan saniyede 4). Bir kareye tıklayınca büyür; büyük görüntü saniyede ${BIG_MAX_FPS} kareye kadar ister, sunucu tavanı yine geçerli. <b>Canlı video</b> düğmesi RTSP'den gerçek akış açar (ffmpeg gerekir, gecikme ~1 sn); olmazsa anlık kareye döner. ← → ile sayfa değişir.</div>
       </div>`;
     $$("#liveSize [data-size]").forEach(b => b.onclick = () => {
       const first = this.pageCams()[0]?.channel;
@@ -1405,7 +1436,16 @@ PAGES.canli = {
     // First pass: load every tile on the page once, then refresh in a slow round robin.
     const pending = L.order.find(ch => !L.loaded.has(ch));
     if (pending == null && now - L.last < LIVE_TICK) return;
-    const ch = pending ?? L.order[L.cursor++ % L.order.length];
+    let ch = pending ?? null;
+    if (ch == null) {
+      // Skip channels the NVR just refused. Retrying all of them every round is what
+      // hammers the box (many channels answer 400/timeout) and hurts the working ones.
+      for (let i = 0; i < L.order.length; i++) {
+        const c = L.order[L.cursor++ % L.order.length];
+        if (!((L.fail?.[c] || 0) > now)) { ch = c; break; }
+      }
+      if (ch == null) return;
+    }
     L.loaded.add(ch); L.last = now;
     this.loadTile(ch);
   },
@@ -1414,7 +1454,8 @@ PAGES.canli = {
     let finished = false;
     const end = ok => { if (finished) return; finished = true; clearTimeout(t); done(ok, pre); };
     const t = setTimeout(() => { pre.src = ""; end(false); }, 10000);
-    pre.onload = () => end(true); pre.onerror = () => end(false);
+    pre.onload = () => { if (L.fail) delete L.fail[ch]; end(true); };
+    pre.onerror = () => { L.fail = L.fail || {}; L.fail[ch] = Date.now() + 30000; end(false); };
     pre.alt = "";
     pre.src = `/api/nvr/snapshot?ch=${ch}&t=${Date.now()}`;
   },

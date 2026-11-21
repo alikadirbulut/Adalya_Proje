@@ -1,6 +1,8 @@
 @echo off
 rem Adalya Paneli - starts the panel for the whole site network (live, port 8080).
 rem Put a shortcut to this file in the Startup folder (Win+R, shell:startup) so it starts with Windows.
+rem If the NVR's own monitor shows cameras dropping while the panel is open, make the panel
+rem gentler: add  --snap-rate 2 --live-max 1  to the adalya_panel.py line below.
 cd /d "%~dp0"
 title Adalya Paneli
 call :findpython || goto :nopython

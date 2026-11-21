@@ -1,4 +1,4 @@
-﻿# Adalya Paneli — Installation
+# Adalya Paneli — Installation
 
 One always-on computer runs the panel. Everyone else uses a browser on their phone, tablet or PC. Nothing is installed on their devices.
 
@@ -113,11 +113,25 @@ Bookmarks and phones then keep working after a reboot.
    ```
    In **Canlı izleme**, click a camera and press **Canlı video**. The panel pulls the NVR sub-stream
    (`rtsp://<user>:<password>@192.168.0.254:554/cam/realmonitor?channel=N&subtype=1`) and streams it as MJPEG
-   (~1 s delay, 8 fps, 960 px); up to **4** live streams at once. If ffmpeg is missing or the NVR refuses,
-   the button falls back to snapshots and says so. The NVR password stays in memory only — never in a file.
+   (~1 s delay, 8 fps, 960 px); up to **2** live streams at once (`--live-max`). If ffmpeg is missing or the NVR
+   refuses, the button falls back to snapshots and says so. The NVR password stays in memory only — never in a file.
 
    The sub-stream is HEVC in this NVR; ffmpeg transcodes it, so live video costs CPU. For a wall of many live
    tiles use the NVR's own client; the panel's live button is meant for one enlarged camera at a time.
+
+6. **If the NVR's own monitor shows cameras dropping ("network disconnected").** Every snapshot makes the NVR
+   open a fresh sub-stream to that camera, so the panel is deliberately limited to **4 snapshots/s** (`--snap-rate`)
+   and one request at a time. If the box still struggles, start it gentler:
+   ```bat
+   python adalya_panel.py --lan --no-browser --port 8080 --snap-rate 2 --live-max 1
+   ```
+   Close the camera pages when nobody is watching them; the panel keeps working for everything else.
+
+   To find out which channels really have a camera, run (with the panel's camera pages closed):
+   ```bat
+   python adalya_test.py channels --user admin
+   ```
+   It asks one channel at a time, 2 s apart, prints the NVR's channel names and saves `results/channels-*.csv`.
 
 ---
 
@@ -231,6 +245,8 @@ Test a restore once before you need it.
 | Page opens on the PC but not on the phone | Firewall rule (see step 3), or the phone is on mobile data / another network |
 | NVR does not connect | NVR address/user/password; the NVR password is not saved, reconnect after every restart; check the NVR is on `192.168.0.254` |
 | Camera tiles say “Görüntü yok” | NVR snapshot may be disabled, or the camera is down. Check **Kameralar** and **Olay geçmişi** |
+| The NVR monitor shows “network disconnected” while the panel is open | Snapshot load. Version 3.5 caps it at 4/s; start with `--snap-rate 2 --live-max 1`, close camera pages nobody is watching |
+| Live video says ffmpeg is missing | Install ffmpeg (`winget install Gyan.FFmpeg`), reopen the panel so PATH is fresh, check `ffmpeg -version` |
 | `database is locked` | You are running the panel from OneDrive/a synced folder. Move it to `C:\AdalyaPanel` |
 | Time is wrong in the panel | Fix the PC clock/time zone (Europe/Istanbul), restart the panel |
 | Forgot the admin password | Use another admin account. If none: stop the panel, restore `data/config.json` from a backup, or set up a fresh install and re-import residents. Do not edit the database by hand |

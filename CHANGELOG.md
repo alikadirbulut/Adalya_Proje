@@ -2,6 +2,16 @@
 
 All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, local-only project.
 
+## 3.5 — 21 November 2026
+- **NVR load governor.** On the real box the panel's snapshot polling made cameras drop off the NVR (its monitor showed "network disconnected"). Every snapshot makes the NVR open a fresh sub-stream to that camera; an 8 fps enlarged view, a 16-tile wall and a 2 s Vardiya rebuild were too much for the weak Wi-Fi cameras.
+  - Server: **one snapshot in flight** at a time, at most **4 per second** in total (`--snap-rate`), a 0.25 s reuse cache, and a channel that answers 400/timeout is **benched** for 30 s → 2 min → 10 min instead of being retried on every refresh.
+  - Live RTSP: default cap **2** simultaneous streams (`--live-max`); `-rw_timeout` stops a stalled pull from holding its slot.
+  - Vardiya wall: no rebuild-everything-every-2-s; one tile per 600 ms, paused while the tab is hidden or the enlarged view is open, failed tiles skipped for 30 s.
+  - Canlı izleme grid: channels that fail are skipped for 30 s on the client too.
+  - `--demo` now resets `config.json` as well, so a second demo/test run starts from the same state.
+- **`python adalya_test.py channels`**: asks the NVR for one channel at a time (2 s apart by default), prints the NVR's channel names and which channels really return a picture, and saves `results/channels-*.csv`. Also fixes the stale `.23` default host in the `nvr` command.
+- 210 API checks still pass, plus a governor self-test (serialisation, budget, cache, cool-down).
+
 ## 3.4 — 21 November 2026
 - **Live RTSP video** in the enlarged camera view: the panel opens the NVR sub-stream (`/cam/realmonitor?channel=N&subtype=1`) with **ffmpeg** and streams MJPEG to the browser (8 fps, 960 px wide, ~1 s delay). Max **4 simultaneous** live streams; resident camera permissions are enforced; it falls back to snapshots if ffmpeg/NVR fails.
 - NVR address corrected to **192.168.0.254** (DHI-NVR4232-4KS3, 32 channels; `.23` is the old address). Live video needs ffmpeg installed on the panel PC; snapshots work without it.

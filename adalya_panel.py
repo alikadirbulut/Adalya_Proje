@@ -39,7 +39,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "3.4"
+VERSION = "3.5"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -114,9 +114,22 @@ SITE_DEFAULT = {
 
 lock = threading.Lock()
 devices, state, sessions, known_paths = [], {}, {}, set()
-LIVE_MAX = 4
+LIVE_MAX = 2            # --live-max; every stream is one RTSP session on the NVR
 live_now = 0
 live_lock = threading.Lock()
+
+# Every snapshot request makes the NVR open a fresh sub-stream to that camera. A 16-tile
+# wall plus an 8 fps enlarged view is enough to knock marginal Wi-Fi cameras off the NVR
+# (its monitor then shows "network disconnected"). These keep the panel gentle.
+SNAP_RATE = 4.0         # --snap-rate: max snapshot requests per second, all clients together
+SNAP_GAP = 0.25         # derived from SNAP_RATE at startup
+SNAP_CACHE_S = 0.25     # identical frame younger than this is reused
+SNAP_FAIL_S = (30, 120, 600)   # cool-down per channel after 1st, 2nd, 3rd+ failure
+_snap_lock = threading.Lock()
+_snap_req = threading.Lock()   # held during the NVR call: one snapshot in flight at a time
+_snap_last = 0.0
+_snap_cache = {}        # ch -> (served_at, ctype, bytes)
+_snap_fail = {}         # ch -> (until, strikes)
 cfg = {}
 site = {}
 nvr = None
@@ -1078,8 +1091,56 @@ def r_snapshot(h, qs, user):
     ch = chparam(qs)
     if not resident_can_watch(user, ch):
         return h.json(403, {"error": "Bu kameraya erişiminiz yok"})
-    ctype, data = need_nvr().snapshot(ch)
+    ctype, data = nvr_snapshot(ch)
     h.raw(200, data, ctype)
+
+
+def nvr_snapshot(ch):
+    """One frame from the NVR, serialised and budgeted.
+
+    Every snapshot makes the NVR open a fresh sub-stream to that camera. A 16-tile
+    wall plus an 8 fps enlarged view was enough to knock marginal Wi-Fi cameras off
+    the NVR. So: one request in flight, at most SNAP_RATE per second in total, a short
+    reuse cache, and a channel that answers 400/timeout is benched (30 s, then 2 min,
+    then 10 min) instead of being retried on every refresh.
+    """
+    global _snap_last
+    now = time.time()
+    with _snap_lock:
+        until = _snap_fail.get(ch, (0, 0))[0]
+        if until > now:
+            raise NvrError(f"Kanal {ch} yanıt vermiyor; {int(until - now)} sn sonra yeniden denenecek")
+        hit = _snap_cache.get(ch)
+        if hit and now - hit[0] < SNAP_CACHE_S:
+            return hit[1], hit[2]
+    with _snap_req:
+        now = time.time()
+        with _snap_lock:
+            until = _snap_fail.get(ch, (0, 0))[0]
+            if until > now:
+                raise NvrError(f"Kanal {ch} yanıt vermiyor; {int(until - now)} sn sonra yeniden denenecek")
+            hit = _snap_cache.get(ch)
+            if hit and now - hit[0] < SNAP_CACHE_S:
+                return hit[1], hit[2]
+            gap = SNAP_GAP - (now - _snap_last)
+            if gap > 0:
+                time.sleep(gap)
+            _snap_last = time.time()
+        try:
+            ctype, data = need_nvr().snapshot(ch)
+        except NvrError:
+            with _snap_lock:
+                strikes = _snap_fail.get(ch, (0, 0))[1] + 1
+                _snap_fail[ch] = (time.time() + SNAP_FAIL_S[min(strikes, len(SNAP_FAIL_S)) - 1], strikes)
+                _snap_cache.pop(ch, None)
+            raise
+        with _snap_lock:
+            _snap_cache[ch] = (time.time(), ctype, data)
+            _snap_fail.pop(ch, None)
+            if len(_snap_cache) > 64:
+                oldest = min(_snap_cache, key=lambda k: _snap_cache[k][0])
+                _snap_cache.pop(oldest, None)
+    return ctype, data
 
 
 def nvr_rtsp_url(ch, subtype=1):
@@ -1115,7 +1176,7 @@ def r_live(h, qs, user):
     proc = None
     try:
         proc = subprocess.Popen(
-            [ff, "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp",
+            [ff, "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-rw_timeout", "15000000",
              "-i", url, "-an", "-vf", "fps=8,scale=960:-2", "-q:v", "6", "-f", "mjpeg", "-"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -4817,17 +4878,24 @@ def open_server(host, port, fixed):
 
 
 def main():
-    global args, nvr, DATA, DB_PATH, CFG_PATH, DEVICES, SITE_PATH
+    global args, nvr, DATA, DB_PATH, CFG_PATH, DEVICES, SITE_PATH, LIVE_MAX, SNAP_RATE, SNAP_GAP
     p = argparse.ArgumentParser(description="Adalya Panel")
     p.add_argument("--port", type=int, default=None, help="default 8080 (or the next free port)")
     p.add_argument("--lan", action="store_true", help="listen on all interfaces (site screens)")
     p.add_argument("--demo", action="store_true", help="simulated site and NVR")
     p.add_argument("--interval", type=float, default=2.0, help="seconds between ping rounds")
     p.add_argument("--misses", type=int, default=2, help="missed pings before a device counts as down")
+    p.add_argument("--snap-rate", type=float, default=4.0,
+                   help="max NVR snapshot requests per second in total (default 4; 1-2 is gentlest on the NVR)")
+    p.add_argument("--live-max", type=int, default=2,
+                   help="max simultaneous live RTSP streams (default 2; each one is an NVR session)")
     p.add_argument("--nvr-host")
     p.add_argument("--nvr-user")
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args()
+    LIVE_MAX = max(1, args.live_max)
+    SNAP_RATE = max(0.5, args.snap_rate)
+    SNAP_GAP = 1.0 / SNAP_RATE
 
     if args.demo:
         # The demo works on fresh copies in data-demo/, so trying it never changes the real
@@ -4844,6 +4912,10 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     if args.demo and os.path.exists(DB_PATH):
         os.remove(DB_PATH)
+    # A demo must start from the same state every time. config.json holds accounts, so a
+    # leftover one makes a second run fail (e.g. "2 accounts on this flat" during approval).
+    if args.demo and os.path.exists(CFG_PATH):
+        os.remove(CFG_PATH)
     if args.demo:
         for sub in ("belgeler", "talepler", "yedekler"):
             bdir = os.path.join(DATA, sub)

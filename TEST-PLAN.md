@@ -7,7 +7,7 @@ Everything here is read-only. Nothing changes a device. Results land in the `res
 - [ ] Copy this whole `adalya-toolkit` folder to the laptop (not into OneDrive).
 - [ ] Update `devices.json` if any IP changed since the last visit.
 - [ ] Bring an Ethernet cable. Test from a **wired** connection to the Ruijie switch, so the laptop's own Wi-Fi doesn't distort the results.
-- [ ] Confirm the installed build: open **Nasıl kullanılır** and check the version at the bottom (**3.4**), or `/api/me` → `version`.
+- [ ] Confirm the installed build: open **Nasıl kullanılır** and check the version at the bottom (**3.5**), or `/api/me` → `version`.
 - [ ] Phone test once before leaving: log in as Yönetici and as Güvenlik; the top bar/menu, Vardiya and camera wall should work. Add it to the home screen if wanted.
 
 ## 1. Baseline health check (2 min)
@@ -39,6 +39,12 @@ python adalya_test.py nvr --user admin
 It asks for the NVR password (not saved, not shown). It makes one login attempt and **stops on the first refusal**, so it can't lock the account.
 
 Note which lines say **OK**: device type, firmware, time, NTP, channel names, camera states, record mode, disks. This decides what the panel can show. The raw answers are saved in `results/nvr-*/`. They contain channel names and settings, not passwords.
+
+## 3b. Which channels have a camera (5 min)
+```
+python adalya_test.py channels --user admin
+```
+Same login rules as step 3 (one attempt, stops on refusal). It asks the NVR for **one snapshot per channel, 2 seconds apart**, so the box and the Wi-Fi cameras never see a burst. It prints the NVR's own channel names and marks `OK` for channels that return a picture, then saves `results/channels-*.csv`. Run it with the panel's camera pages closed. Put the OK channels into `devices.json` (**Ağ cihazları → Cihaz envanteri**) and remove the ones without a camera; keep the channel numbers.
 
 ## 4. SNMP tests (1 min each)
 ```
@@ -101,7 +107,8 @@ Pages to test against the real NVR (each was tested only against a simulated Dah
 - [ ] **Dışa aktar → Tam paket**: does the zip contain `nvr-log.csv`?
 - [ ] **NVR arayüzü**: does the NVR's own page open inside the panel, or only in a new tab?
 - [ ] **Genel bakış → NVR disk**: shows a %? If "?", bring back the `nvr-*` results from step 3.
-- [ ] Check that the channel numbers in the panel match the NVR (channel numbers are in `devices.json`, taken from the NVR list on 14 Nov).
+- [ ] Check that the channel numbers in the panel match the NVR (run step 3b; channel numbers live in `devices.json`).
+- [ ] **Load test (important):** open **Canlı izleme**, then the enlarged view, then **Canlı video**, one at a time, and watch the NVR's own monitor. If cameras show "network disconnected", close the panel page, note which one caused it, and restart with `--snap-rate 2 --live-max 1`. Version 3.5 already caps the panel at 4 snapshots/s and 2 live streams; report whether that is enough on this box.
 
 On the day:
 - [ ] **Site haritası → Haritayı düzenle**: drag each camera to its real spot during the site walk. Positions save to `devices.json`.

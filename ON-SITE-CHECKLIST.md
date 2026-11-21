@@ -165,6 +165,7 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 | Canlı izleme | Click a tile → large view updates continuously; frame rate shown next to the name: ____ kare/sn (good camera) / ____ kare/sn (Güney çevre 1) | ☐ | |
 | Canlı video | Click a tile → **Canlı video** → real RTSP stream (no slideshow), ~1 s delay; which channels work: ____ | ☐ | ffmpeg installed? |
 | Canlı video | Open a second live camera; close both and check ffmpeg processes stop | ☐ | |
+| Yük testi | Open the wall, then the enlarged view, then live video, one at a time; does the NVR monitor show "network disconnected"? Which page triggers it: ____ | ☐ | 3.5 caps 4 snapshot/s + 2 streams; if it still drops, `--snap-rate 2 --live-max 1` |
 | Kayıtlar | Güney çevre 1, today, **Kayıtları bul** → files listed | ☐ | |
 | Kayıtlar | **İndir** one file, open in Dahua SmartPlayer / VLC | ☐ | |
 | Olaylar ve loglar | **Logları getir** → NVR log lines | ☐ | |
@@ -173,6 +174,13 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 | Kameralar | Channel numbers match the NVR's channel names | ☐ | |
 
 If something fails, run `python adalya_test.py nvr --user admin` and bring back the `results/nvr-*` folder; it shows exactly what the NVR answers.
+
+### 2.3b Which channels really have a camera? (5 min)
+Run this with the panel's camera pages closed. It asks the NVR for **one snapshot per channel, 2 s apart**, so it cannot overload the box or the Wi-Fi cameras:
+```
+python adalya_test.py channels --user admin
+```
+It prints the NVR's own channel names and marks `OK` for channels with a picture; results are saved in `results/channels-*.csv`. Write the OK channels into `devices.json` (**Ağ cihazları → Cihaz envanteri**) and remove channels that have no camera. If a channel is OK here but shows nothing in the panel, the channel name/number in `devices.json` is wrong.
 
 ### 2.4 Live video: confirm the stream parameters (15 min)
 Live video now ships as ffmpeg → MJPEG (3.4). These tests confirm the sub-stream settings it depends on and whether the NVR can serve MJPEG directly. Nothing is changed on the NVR; only read.

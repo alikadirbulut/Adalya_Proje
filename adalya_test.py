@@ -4,6 +4,7 @@ Commands:
   python adalya_test.py check                 one-shot health check of every device in devices.json
   python adalya_test.py watch [--only ...]    continuous ping log, records every drop with its duration
   python adalya_test.py nvr --user admin      probe the Dahua NVR HTTP API (asks for the password)
+  python adalya_test.py channels              find which NVR channels have a camera, one snapshot at a time
   python adalya_test.py snmp --host IP        test whether a device answers SNMP
 
 Nothing here changes any device. Passwords are asked at runtime and never saved.
@@ -373,6 +374,82 @@ def cmd_nvr(args):
     print(f"\nRaw answers saved in: {folder}")
 
 
+def cmd_channels(args):
+    """Ask the NVR for one snapshot per channel, slowly and in order.
+
+    This is the safe way to find out which channels actually have cameras: one request
+    every --delay seconds, never in parallel, so the NVR and the Wi-Fi cameras are not
+    hit by a burst. Channels without a camera usually answer HTTP 400 or time out; they
+    are logged and skipped, not retried.
+    """
+    password = getpass.getpass(f"Password for {args.user}@{args.host} (not saved): ")
+    os.makedirs(OUT, exist_ok=True)
+    tag = stamp()
+    csv_path = os.path.join(OUT, f"channels-{tag}.csv")
+    try:
+        first, last = (int(x) for x in args.range.split("-"))
+    except ValueError:
+        print("--range must look like 1-32")
+        return
+    if args.only:
+        chans = [int(x) for x in args.only.split(",") if x.strip()]
+    else:
+        chans = list(range(first, last + 1))
+
+    # One cheap call first: a wrong password stops here, not after 32 attempts.
+    status, _ = http_get(args.host, "/cgi-bin/magicBox.cgi?action=getDeviceType",
+                         args.user, password, args.port, timeout=args.timeout)
+    if status == 401:
+        print("Login refused. Stopping now so the NVR account is not locked.")
+        return
+    if status != 200:
+        print(f"NVR did not answer as expected (HTTP {status}).")
+        return
+
+    names = {}
+    status, body = http_get(args.host, "/cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle",
+                            args.user, password, args.port, timeout=args.timeout)
+    if status == 200:
+        for m in re.finditer(r"table\.ChannelTitle\[(\d+)\]\.Name=(.*)", body.decode("utf-8", "replace")):
+            names[int(m.group(1)) + 1] = m.group(2).strip()
+
+    print(f"\nProbing channels {chans[0]}–{chans[-1]} on {args.host}, {args.delay:g} s apart. "
+          f"Do not open the panel's camera pages meanwhile.\n")
+    print(f"{'Ch':>3}  {'Result':<12} {'HTTP':>5} {'Bytes':>8} {'ms':>6}  NVR channel name")
+    print("-" * 72)
+    good = []
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+        wr = csv.writer(f)
+        wr.writerow(["channel", "result", "http", "bytes", "ms", "name", "time"])
+        for ch in chans:
+            t0 = time.perf_counter()
+            try:
+                status, body = http_get(args.host, f"/cgi-bin/snapshot.cgi?channel={ch}",
+                                        args.user, password, args.port, timeout=args.timeout)
+                ms = round((time.perf_counter() - t0) * 1000)
+                ok = status == 200 and body[:2] == b"\xff\xd8"
+                note = "OK" if ok else f"HTTP {status}"
+                if status == 401:
+                    print("Login refused mid-way. Stopping now.")
+                    break
+                if ok:
+                    good.append(ch)
+                print(f"{ch:>3}  {note:<12} {status:>5} {len(body):>8} {ms:>6}  {names.get(ch, '')}")
+                wr.writerow([ch, "OK" if ok else "fail", status, len(body), ms, names.get(ch, ""),
+                             datetime.now().strftime("%H:%M:%S")])
+            except OSError as e:
+                ms = round((time.perf_counter() - t0) * 1000)
+                print(f"{ch:>3}  {'timeout/error':<12} {'':>5} {'':>8} {ms:>6}  {names.get(ch, '')}")
+                wr.writerow([ch, "error", "", 0, ms, names.get(ch, ""),
+                             datetime.now().strftime("%H:%M:%S")])
+            f.flush()
+            time.sleep(args.delay)
+    print("-" * 72)
+    print(f"Channels with a picture: {', '.join(map(str, good)) if good else 'none'}")
+    print(f"Saved: {csv_path}")
+    print("Next: put those channel numbers into devices.json (Ağ cihazları → Cihaz envanteri).")
+
+
 def cmd_snmp(args):
     for community in args.community.split(","):
         res = snmp_get(args.host, community.strip())
@@ -397,10 +474,20 @@ def main():
     w.set_defaults(func=cmd_watch)
 
     n = sub.add_parser("nvr", help="probe the Dahua NVR HTTP API")
-    n.add_argument("--host", default="192.168.0.23")
+    n.add_argument("--host", default="192.168.0.254")
     n.add_argument("--port", type=int, default=80)
     n.add_argument("--user", default="admin")
     n.set_defaults(func=cmd_nvr)
+
+    c = sub.add_parser("channels", help="find which NVR channels have a camera (one at a time)")
+    c.add_argument("--host", default="192.168.0.254")
+    c.add_argument("--port", type=int, default=80)
+    c.add_argument("--user", default="admin")
+    c.add_argument("--range", default="1-32", help="channel range, e.g. 1-32")
+    c.add_argument("--only", help="comma list of channels instead of the range")
+    c.add_argument("--delay", type=float, default=2.0, help="seconds between channels (default 2)")
+    c.add_argument("--timeout", type=float, default=6.0, help="per-request timeout in seconds")
+    c.set_defaults(func=cmd_channels)
 
     s = sub.add_parser("snmp", help="test SNMP on a device")
     s.add_argument("--host", required=True)
