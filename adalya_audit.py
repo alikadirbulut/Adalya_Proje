@@ -192,8 +192,13 @@ def cmd_full(args):
     if not args.no_monitor:
         print(f"\n== 4/5 monitoring for {args.monitor_min:g} min ==")
         cmd_monitor(args)
-    print("\n== 5/5 report ==")
+    print("\n== 5/6 report ==")
     cmd_report(args)
+    print("\n== 6/6 infrastructure-audit centre ==")
+    import audit_store
+    res = audit_store.build(users=args.users)
+    print(f"  scan {res['scan_id']} · health {res['score']}/100 ({res['grade']}) · {res['alerts']} findings")
+    print(f"  dashboard: {res['dashboard']}")
 
 
 def main():

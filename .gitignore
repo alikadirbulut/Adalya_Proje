@@ -5,6 +5,15 @@ data-demo/
 # Site test toolkit output
 results/
 
+# Generated audit centre (raw site data, dashboards, exports). README stays tracked.
+infrastructure-audit/raw-data/
+infrastructure-audit/processed-data/
+infrastructure-audit/reports/
+infrastructure-audit/dashboard/
+infrastructure-audit/exports/
+infrastructure-audit/logs/
+infrastructure-audit/archive/
+
 # Python and temp files
 __pycache__/
 *.pyc

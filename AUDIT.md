@@ -51,6 +51,10 @@ Individual stages:
 
 ## Outputs (`results/audit/`)
 
+These are the collector's working files. The **organised, analysed centre** is built from
+them into `infrastructure-audit/` (raw preservation, processed datasets, six reports,
+dashboard, exports, history). See [infrastructure-audit/README.md](infrastructure-audit/README.md).
+
 | File | Content |
 |---|---|
 | `discover-*.json` / `.csv` | every answering host: IP, MAC, vendor guess, role, open ports, inventory match; missing / unknown / duplicate MAC / wrong MAC / DHCP-pool lists |
@@ -64,6 +68,16 @@ Individual stages:
 
 Every record carries a timestamp and an IP/device key, so the JSONL can be imported into
 SQLite later (`audit_samples`, `audit_runs`, `audit_findings`) without reshaping.
+
+## Build the centre
+
+```bat
+python adalya_dashboard.py build          :: results/audit -> infrastructure-audit/
+python adalya_dashboard.py serve          :: http://127.0.0.1:8090/dashboard/index.html
+```
+
+`full` does the build automatically as its last stage. Layout, datasets, reports, dashboard
+and export details are documented in [infrastructure-audit/README.md](infrastructure-audit/README.md).
 
 ## What it can and cannot measure
 

@@ -2,6 +2,15 @@
 
 All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, local-only project.
 
+## Infrastructure audit centre — 21 November 2026
+- **`infrastructure-audit/`**: one place for raw collections, processed datasets, six HTML reports, an interactive dashboard, logs, exports and archive. Raw collector files are copied per scan with a manifest (size + SHA-256); previous scans and processed snapshots are never overwritten.
+- **Processed datasets**: `device-inventory`, `network-topology`, `performance-metrics`, `bandwidth-analysis`, `health-summary`, `history` — each traceable to its scan manifest.
+- **Reports** answer the same seven questions per metric (what was measured, meaning, result, healthy/concerning, cause, impact, action), with severity and confirmed/suspected confidence. Report set: overview, camera health, NVR/storage, network performance, bottleneck analysis, scalability.
+- **Dashboard** (`adalya_dashboard.py build|serve`): plain HTML/CSS/JS, no libraries; opens from disk as a static snapshot or live over `serve` with automatic rebuilds. KPI cards, findings with actions, camera table with filters/search, NVR channels and disk, topology (confirmed vs inferred edges), history comparison, exports and data lineage.
+- **Capacity model** for 100 users separates API load from video and prints every assumption; measured vs modelled is stated throughout.
+- **Exports**: CSV (inventory, bitrates, findings), JSON (all datasets), print-to-PDF sheet plus optional headless-browser PDF.
+- `full` now ends by building the centre automatically. Generated site data stays out of git; only the centre's README is committed.
+
 ## Audit toolkit — 21 November 2026
 - **`adalya_audit.py`**: read-only infrastructure audit in five stages — `discover` (ICMP/ARP/port sweep compared with `devices.json`), `nvr` (~14 Dahua API probes: model, firmware, serial, network, per-channel encode/state, storage, logs), `perf` (loss, RTT, jitter, TCP/HTTP latency, optional measured sub-stream bitrate), `monitor` (JSONL history with NVR state/disk sampling) and `report` (self-contained HTML + JSON + inventory CSV).
 - **Analysis, not just collection:** offline cameras, link errors in the NVR log, packet loss/high latency/jitter, disk pressure, duplicate MACs, wrong MACs, DHCP-pool devices, missing/unknown inventory, and a 100-user capacity model with printed assumptions (API vs video separated).
