@@ -1,8 +1,8 @@
-﻿# Next session prompt: Adalya Paneli + Adalya CCTV troubleshooting
+# Next session prompt: Adalya Paneli + Adalya CCTV troubleshooting
 
 Copy everything below the line into a new session. Replace `<FOLDER>` with where the `adalya-toolkit` folder lives (on my PC it is in `OneDrive\Masaüstü\adalya-toolkit`). Open the session **in that folder**, not in a temporary one.
 
-*State as of 19 November 2026: **version 3.2**, Phase 10 (Nasıl kullanılır + onboarding video) included.*
+*State as of 21 November 2026: **version 3.4**, Phase 11 (live RTSP video) included.*
 
 ---
 
@@ -44,13 +44,13 @@ I'm continuing two connected pieces of work for **Adalya Sitesi** (a residential
 - **Phase 8:** request **threads** (resident ↔ management, follow-ups) with **Açık / İşlemde / Kapalı**; **notifications** table + bell/phone tab/badge fed by announcements and by **Mesaj gönder → Uygulama bildirimi** (tick recipients); resident **Araçlarım** add/edit up to **2** vehicles; **Esin Noğan biography** (18 Haziran 2026 04:30, Zonguldak, Eskişehir/Sinop roots, memur family, Antalya, Pamukkale + Near East University) on Proje and in Ayarlar; PNG 192/512 icons + install button; `/demo?role=resident&to=/%23/dairem` for testing. Background push still needs HTTPS + VAPID.
 - **Phase 9:** black-and-white **photo logo** (192/512/maskable, Apple touch, login, sidebar, `/kayit`); **mobile shell for manager and Güvenlik** (fixed top bar with logo/bell, off-canvas menu + backdrop, full-width forms, 16 px inputs, safe-area, 44 px targets); iOS standalone meta; service-worker cache `adalya-v4`. Android install without a URL bar still requires HTTPS.
 - **Phase 10:** **Proje → Nasıl kullanılır** (`#/nasil`, old `#/proje` redirects): 45-second onboarding video (`media/onboarding.mp4`, served with Range support), four reasons to use the panel, first-five-minutes steps, role cards, and **Esin's profile/biography**; technical troubleshooting story removed from the resident-facing page.
+- **Phase 11:** **live RTSP video** in the enlarged camera view (ffmpeg → MJPEG, 8 fps, 960 px, max 4 streams, resident permissions); NVR corrected to `192.168.0.254`; snapshots/live tested on the real box (ch 2/3/11/14 and 1–3), many channels still 400/timeout.
 - **Security basics:** personal accounts, PBKDF2, 12 h sessions, login throttle, Origin check on POST, NVR password never saved (one attempt, then stops), audit log for downloads, exports, imports, plate lookups, device and aidat changes, messages, announcements, guest passes and parcels.
 
 ## Next tasks (suggested order; ask me before starting a big one)
 
-### 1. Bring back the site results (when I have them)
 ### 1. Bring back the site results (when I have them) — **next**
-Update `devices.json`, the troubleshooting status below, and the checklist from what I bring back. Then go through `ON-SITE-CHECKLIST.md` step 2.3: every NVR feature of the panel has only been tested against a **simulated** Dahua NVR. Fix whatever the real NVR answers differently (snapshots, record search/download, logs, disk info). Also verify on a real phone: mobile drawer for Yönetici/Güvenlik, camera wall 4/6/8/10, click-to-enlarge, notifications.
+Snapshots and live RTSP have now been tested on the real NVR (21 Nov): model **DHI-NVR4232-4KS3**, `192.168.0.254`, firmware `4.006.0000000.6.R`, 32 channels, disk 24%; snapshots work on channels **2, 3, 11, 14** and live RTSP on **1–3** (HEVC 640×360 / 320×240, 15 fps). Channels 4–10, 12–13 and 15–18 returned HTTP 400 or timed out, so the real channel map is still unclear. Next: verify **record search/download, NVR logs and disk** on the real box, map the channels that actually have cameras to names in `devices.json`, and check the phone UI (drawer, Vardiya wall, notifications).
 
 ### 2. Live video (first version shipped; next is multi-view)
 **Done (3.4):** the enlarged camera view has a **Canlı video** button. The server runs ffmpeg on the NVR sub-stream (`rtsp://<user>:<pass>@192.168.0.254:554/cam/realmonitor?channel=N&subtype=1`), transcodes **HEVC → MJPEG** at 8 fps / 960 px and streams it to the browser (~1 s). Max 4 simultaneous streams, resident permissions enforced, snapshots fall back. ffmpeg must be on the panel PC's PATH; the password stays in memory only.
@@ -81,7 +81,7 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 - Practical list: ordinary general assembly in January, invitation ≥15 days before; enforce yönetim planı rules; elevator monthly maintenance, yearly A-type inspection, red label = stop use; roof, facade, sewage, booster pump, generator, heating; cleaning and landscaping; staff SGK, salaries, leave, severance; İSG (6331): risk assessment, safety specialist, workplace doctor; enforcement, kanuni ipotek, müdahalenin men'i.
 
 ### 5. Known gaps and small fixes
-- **Real site test is the next step:** only the simulated NVR has been tested. Bring back `nvr-*`, drop logs and screenshots, then fix snapshots/record search/logs/disk.
+- **Real NVR partially verified (21 Nov):** snapshots on ch 2/3/11/14, live RTSP on ch 1–3; many channels return HTTP 400/timeout, so the real camera/channel list still needs the site walk. Still to verify: record search/download, logs, disk, channel names and map.
 - **No background push / e-mail / SMS:** notifications are in-app (bell, phone tab) and only pop while the app is open. True push needs HTTPS + VAPID; sending mail/SMS needs a provider.
 - **Android install:** a real PWA without the URL bar needs HTTPS. On plain HTTP only a browser shortcut exists. iPhone Add to Home Screen is standalone.
 - **Logo:** the app icon is still the black-and-white photo; the house/badge illustration was proposed but not applied.
@@ -106,7 +106,7 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 - **Router:** TP-Link Aginet **EX520v** (ISP-class), `192.168.0.1`, DHCP server and the only main 2.4 GHz radio (channel 11). No public local API; the ISP can manage/reset it remotely (TAUC/TR-069). If it's reset, the DHCP reservations disappear → back up its config.
 - **DHCP pool:** changed from `.10–.200` to **`.150–.200`**. Cameras and infrastructure get fixed addresses below `.150` via **Address Reservation** (MAC → IP).
 - **Switch:** Ruijie Reyee **RG-ES208GC**, 8 ports (6 used), no PoE, no SNMP, at `192.168.0.16`. Web login unknown (label default didn't work); reset only in a maintenance window.
-- **NVR:** Dahua **DHI-NVR4232-4KS3** (32 channels), `192.168.0.254` (also answers on `.254`), MAC `E0:2E:FE:36:12:69`. Clock was wrong; HDD/recording not yet verified.
+- **NVR:** Dahua **DHI-NVR4232-4KS3** (32 channels), `192.168.0.254` (old address `.23`), MAC `E0:2E:FE:36:12:69`, firmware `4.006.0000000.6.R`. HTTP CGI, snapshots and RTSP work; record search/download and logs not yet verified. Clock within a few minutes; HDD 24% used.
 - **Cameras:** Dahua **DH-P3B-PV** (Wi-Fi pan/tilt, 12V adapters), MACs `E0:2E:FE:67:…`. Mixed passwords: newer firmware (`.26.R`, e.g. `.100`, `.12`) take the NVR password; older (`.24.R`) use an installer password. Wrong attempts lock a camera for 5–30 min.
 - **Repeaters:** 2× Tenda **T10** (one at `192.168.0.10`, MAC `B4:0F:3B:45:9C:F8/F9`) and TP-Link **TL-WA855RE** (`192.168.0.17`). All 2.4 GHz consumer repeaters.
 - **Monitor:** Hikvision screen on the NVR's HDMI. UPS under the desk.
@@ -124,7 +124,8 @@ My recommendation so far: **managers/security** reach the panel from outside thr
 - [ ] Weak signal: **Güney çevre 1** (`.106`, RSSI 18), **Güney çevre 2** (`.108`, RSSI 25), **Cblok** (`.12`, RSSI 28); Tenda uplink RSSI 34. Tune (H.265 main 1–1.5 Mbps, lower FPS, repeaters on their own SSID and channel 1/6), measure before/after with `python adalya_test.py watch --only 106,108,12`.
 - [ ] NVR: clock/NTP, HDD and recording on all channels, BPS screenshot.
 - [ ] Router: ISP name, firmware, SNMP/remote management; config backup.
-- [ ] Live-video tests (checklist 2.4): RTSP sub stream in VLC, codecs per channel, MJPEG URL, RTSP port.
+- [ ] Live-video tests: RTSP sub stream works (ch 1–3); confirm codec/fps per channel, which channels actually have cameras, and the MJPEG fallback. Snapshot endpoint returns 400 on many channels — check the NVR's channel list.
+- [ ] Map the real channels to camera names in `devices.json`; the current 17-channel list is partly stale.
 - [ ] Change default passwords (switch etc.) at the end.
 - [ ] Elevator cameras need a dedicated elevator bridge kit or travelling cable.
 

@@ -1,4 +1,4 @@
-﻿# Adalya Paneli
+# Adalya Paneli
 
 **A local management site for the cameras and network of Adalya Sitesi.**
 Live view, recordings, drop history, logs, exports, maintenance notes and a site map, all in one place, running entirely inside the site's own network.
@@ -197,7 +197,7 @@ The short version (full guide: [INSTALL.md](INSTALL.md)):
 
 Don't install a separate copy on each person's device. One panel means one history, one download log and one NVR connection.
 
-**Before the site day:** read [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md). The panel has only been tested against the **simulated** NVR so far.
+**Before the site day:** read [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md). Snapshots and live RTSP have been tested on the real NVR on 21 Nov; recordings, logs and the full channel map still need the site test.
 
 ## Users and roles
 
@@ -360,7 +360,7 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Current build: version 3.4** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
 - **Tests:** `tests/api_smoke.py` runs **210 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
-- **Site test pending (next step):** the real NVR and cameras have not been tested yet. Live video is not implemented — snapshots only. Use [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md), then bring back the results.
+- **Real NVR (21 Nov):** model **DHI-NVR4232-4KS3** at `192.168.0.254`, 32 channels, disk 24%. Snapshots work on channels **2, 3, 11, 14**; **live RTSP** works on **1–3** (HEVC → MJPEG via ffmpeg). Many other channels answer HTTP 400/timeout, so the channel map needs the site walk. Recording search/download, logs and disk still need verification on site.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
 - **Live video (planned, needs site tests first):** the panel shows NVR snapshots, not video. True live video means taking the NVR's RTSP sub stream (`/cam/realmonitor?channel=N&subtype=1`, port 554) through a small media server on the panel PC (e.g. go2rtc: one pull per camera however many people watch, sub-second delay, playable in the browser), reachable only through the panel so roles and resident camera access still apply. It needs the sub stream in **H.264** (browsers play H.265 unreliably) and a separate view-only NVR user, because the media server must store its login. A cheaper fallback is the NVR's MJPEG stream if this model supports it. The tests that decide it are in ON-SITE-CHECKLIST.md, step 2.4.
 - **Next on the roadmap:** meetings and decision book (agenda, proxies, quorum by arsa payı and headcount, minutes); income and expenses beyond aidat (işletme projesi, yearly account report, receipts); later an online resident portal kept separate from the camera system (VPN for managers and security, a portal without any camera features for residents). Details in [NEXT-PROMPT.md](NEXT-PROMPT.md).
