@@ -88,7 +88,7 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
 |---|---|
 | **Bugün** (home) | Answers "what do I do now?" instead of listing the system state. Greeting and date, four plain-language counters (cameras working, drops today, aidat debt, upcoming legal work), **Şimdi ilgilenmeniz gerekenler** — cameras that are down, flats that are overdue, a contract about to expire, a new request — each with one action button, a **Bugün ve yaklaşan** agenda (legal dates, tasks, contracts), and four quick actions. Güvenlik sees cameras, drops and network devices; the aidat and legal cards are admin-only. |
 | **Vardiya ekranı** | The guard's screen: **quick guest entry** (name, flat, plate, purpose — one form, no paper book), a large plate search box with the result card (flat, residents, phones, vehicle), **today's pre-approved visitor passes** with a "Giriş" button, **parcels** waiting for a flat with "Teslim", today's visitors, and a **camera wall for 4, 6, 8 or 10 cameras** (choice remembered per browser; click any tile for a large live view, Esc closes). Works for Güvenlik and Yönetici. |
-| **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 2.8 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (Esc closes) and jump to its recordings. The enlarged view refreshes **continuously**: the next picture is requested as soon as the last one arrives, up to **8 per second**, one request at a time, with the actual frame rate shown next to the camera name. The grid pauses meanwhile, so the NVR load stays about the same. It is near-live, not true video (no sound); the real rate is whatever the NVR can answer. See "Live video" under Project status. |
+| **Canlı izleme** | A grid of camera tiles that fills the screen, with **8, 16 or 32 views per screen** and paging when there are more cameras (‹ › buttons or the arrow keys). The choice is remembered per browser. **Tam ekran** is meant for the security room monitor. Tiles refresh one at a time (about 2.8 snapshot requests per second in total, never more than 2 open at once), so a bigger grid doesn't load the NVR more. Click a tile to enlarge it (Esc closes) and jump to its recordings. The enlarged view refreshes **continuously**: the next picture is requested as soon as the last one arrives, up to **8 per second**, one request at a time, with the actual frame rate shown next to the camera name. The grid pauses meanwhile, so the NVR load stays about the same. The **Canlı video** button in the enlarged view opens the real RTSP sub-stream as MJPEG (needs ffmpeg on the panel PC, ~1 s delay, max 4 simultaneous streams, residents only for allowed cameras) and falls back to snapshots; the grid itself stays snapshots. |
 | **Kameralar** | Every device with its NVR channel, IP, status, ping, drops today, 24-hour uptime and MAC check ("Eşleşiyor" or "Farklı cihaz"). Click a row for the detail view: latest picture, a 24-hour strip with each drop marked in red, maintenance notes, and buttons for live view and recordings. |
 | **Site haritası** | Full-screen map on a 3D render of the site, rotated so B and C blok are at the top, with block labels. Each device has an icon for its type (camera, access point, router, switch, NVR, repeater; cameras round, network devices square) coloured by status: green (working), amber (dropped today), red (down), grey (unknown). Clicking a device opens a small card with name, type, IP, channel, status and buttons for live view and details. Admins can drag pins and labels into place and adjust the image rotation. |
 | **Ağ cihazları** | Router, switch, NVR and Wi-Fi devices with links to their own web pages, and a plain-language description of the network. Admins also get the **device inventory**: add, edit or remove cameras and devices (name, IP, MAC, type, NVR channel) without editing `devices.json` by hand, with the step-by-step order for adding a new device (MAC → router reservation below .150 → NVR channel → panel → map). It refuses duplicate IPs and channels and warns about addresses inside the DHCP pool. Only the panel's list changes; the device itself is never touched. |
@@ -141,7 +141,7 @@ The menu on the left is grouped into seven groups for staff: **Genel**, **Kamera
         Switch Ruijie RG-ES208GC (192.168.0.16)
            │                    │
   NVR Dahua NVR4232-4KS3   Panel PC (192.168.0.30)  ← adalya_panel.py --lan
-   (192.168.0.23) ── HDMI ── monitor        │
+   (192.168.0.254) ── HDMI ── monitor        │
            ▲                                │ ping, ARP, Dahua HTTP API
            │ video                          │
    Cameras DH-P3B-PV (Wi-Fi, some through range extenders)
@@ -293,7 +293,7 @@ Edited from **Ayarlar**; you rarely need to touch it by hand.
 | `--interval` | `2` | Seconds between ping rounds |
 | `--misses` | `2` | Missed pings before a device counts as down |
 | `--nvr-user` | | Connect to the NVR at start (asks for the password in the console) |
-| `--nvr-host` | `192.168.0.23` | NVR address for `--nvr-user` |
+| `--nvr-host` | `192.168.0.254` | NVR address for `--nvr-user` |
 | `--no-browser` | off | Don't open a browser window at start |
 
 ## Site test toolkit
@@ -357,8 +357,8 @@ Camera recordings, logs, the residents registry (names, phones, e-mails, vehicle
 - **Done (18 Nov, Phase 8):** request **conversations** with Açık / İşlemde / Kapalı statuses and resident follow-ups; **notification center** (bell, phone tab, badge) fed by new announcements and by **Mesaj gönder → Uygulama bildirimi** with ticked recipients; residents can add/edit **up to 2 vehicles**; **Esin Noğan biography** on the Proje page and in Ayarlar; PNG app icons and an install button; `/demo?role=…&to=…` role switch for testing.
 - **Done (19 Nov, Phase 9):** black-and-white **photo logo** used for the app icon (192/512/maskable), Apple touch icon, login screen, sidebar and registration page; **mobile shell for manager and Güvenlik** — top bar with logo and bell, off-canvas menu with backdrop, full-width forms, safe-area padding and 16 px inputs; iOS standalone meta tags; service-worker cache v4.
 - **Done (19 Nov, Phase 10):** **Nasıl kullanılır** replaces Proje (route `#/nasil`, old links redirect): a **45-second onboarding video**, four reasons to use the panel, first-five-minutes steps, role cards, and **Esin Noğan's profile** with her biography; the technical troubleshooting story moved out of the resident-facing page.
-- **Current build: version 3.3** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
-- **Tests:** `tests/api_smoke.py` runs **209 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
+- **Current build: version 3.4** (19 Nov 2026). Real data is never committed; the demo recreates `data-demo/` at every start.
+- **Tests:** `tests/api_smoke.py` runs **210 checks** (roles and KVKK limits, import CSV/XLSX, plate lookup, devices, aidat math, camera access, calendar, contracts, documents, announcements, guest passes, parcels, request threads/statuses, search, audit filters/CSV, backups and restore, receipts, payment link, bank import, budget, income/expense, reminders, login throttle, TOTP, PWA/icons, registration/approval/invite, notifications and resident cars). Start a fresh demo on another port and run it against that server; it never touches the real data.
 - **Tested** against a simulated Dahua NVR: login, snapshots, recording search and download, logs, exports, lockout protection, permissions.
 - **Site test pending (next step):** the real NVR and cameras have not been tested yet. Live video is not implemented — snapshots only. Use [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md), then bring back the results.
 - **Ongoing on site:** finishing the IP reservations, recovering the cameras still on `192.168.1.x`, a site walk for offline cameras, tuning the weak Güney cameras. An outdoor access point for the south side is **under consideration, not decided**.
@@ -404,6 +404,8 @@ This is a personal project. No permission is granted to use, copy, modify or dis
 ---
 
 <p align="center"><i>Esin Noğan'ın anısına.</i></p>
+
+
 
 
 

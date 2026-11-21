@@ -1,4 +1,4 @@
-# Adalya Paneli — Installation
+﻿# Adalya Paneli — Installation
 
 One always-on computer runs the panel. Everyone else uses a browser on their phone, tablet or PC. Nothing is installed on their devices.
 
@@ -100,9 +100,24 @@ Bookmarks and phones then keep working after a reboot.
 ## 5. Connect the NVR
 
 1. **Ayarlar → NVR bağlantısı**.
-2. Enter address `192.168.0.23`, NVR user and password.
+2. Enter address `192.168.0.254`, NVR user and password.
 3. The password is **never saved**, so after every restart an admin reconnects it. Everything else keeps working without it.
 4. Try **Canlı izleme** (snapshots) and **Kayıtlar** (search/download). If something fails, see `TEST-PLAN.md` step 7 and bring back the `nvr-*` results.
+5. **Live video (needs ffmpeg).** Install ffmpeg on the panel PC once:
+   ```powershell
+   winget install Gyan.FFmpeg
+   ```
+   Close and reopen the panel (or the PC) so `ffmpeg` is on its PATH, then check:
+   ```bat
+   ffmpeg -version
+   ```
+   In **Canlı izleme**, click a camera and press **Canlı video**. The panel pulls the NVR sub-stream
+   (`rtsp://<user>:<password>@192.168.0.254:554/cam/realmonitor?channel=N&subtype=1`) and streams it as MJPEG
+   (~1 s delay, 8 fps, 960 px); up to **4** live streams at once. If ffmpeg is missing or the NVR refuses,
+   the button falls back to snapshots and says so. The NVR password stays in memory only — never in a file.
+
+   The sub-stream is HEVC in this NVR; ffmpeg transcodes it, so live video costs CPU. For a wall of many live
+   tiles use the NVR's own client; the panel's live button is meant for one enlarged camera at a time.
 
 ---
 
@@ -202,7 +217,7 @@ Test a restore once before you need it.
    python adalya_panel.py --demo --no-browser --port 8091
    python tests/api_smoke.py http://127.0.0.1:8091
    ```
-   Expected: **209 passed, 0 failed**.
+   Expected: **210 passed, 0 failed**.
 
 ---
 
@@ -214,7 +229,7 @@ Test a restore once before you need it.
 | `Port 8080 is in use` | Another panel/copy is running. Close it, or start with another port: `python adalya_panel.py --lan --port 3000` |
 | Phone cannot open the page | Same Wi-Fi? Windows Firewall allow Python on **private** networks? Check `ipconfig` for the right IPv4 address. Guest Wi-Fi often isolates clients |
 | Page opens on the PC but not on the phone | Firewall rule (see step 3), or the phone is on mobile data / another network |
-| NVR does not connect | NVR address/user/password; the NVR password is not saved, reconnect after every restart; check the NVR is on `192.168.0.23` |
+| NVR does not connect | NVR address/user/password; the NVR password is not saved, reconnect after every restart; check the NVR is on `192.168.0.254` |
 | Camera tiles say “Görüntü yok” | NVR snapshot may be disabled, or the camera is down. Check **Kameralar** and **Olay geçmişi** |
 | `database is locked` | You are running the panel from OneDrive/a synced folder. Move it to `C:\AdalyaPanel` |
 | Time is wrong in the panel | Fix the PC clock/time zone (Europe/Istanbul), restart the panel |
@@ -251,3 +266,5 @@ Test a restore once before you need it.
 | `--nvr-user` | — | Prefill the NVR username on the login attempt; password is still asked and never saved |
 
 Full technical state and next tasks: [NEXT-PROMPT.md](NEXT-PROMPT.md). Site day: [ON-SITE-CHECKLIST.md](ON-SITE-CHECKLIST.md) and [TEST-PLAN.md](TEST-PLAN.md).
+
+

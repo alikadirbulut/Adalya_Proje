@@ -1327,10 +1327,10 @@ PAGES.canli = {
           <div id="liveGrid"></div>
           <div id="liveBig" role="dialog" aria-label="Büyük görüntü">
             <img id="bigImg" alt="">
-            <div class="bigbar"><span><b id="bigTitle"></b> <span id="bigFps" style="opacity:.75;font-size:12px;margin-left:6px"></span></span><span style="display:flex;gap:6px">${isResident() ? "" : '<a class="btn" id="bigRec">Kayıtları aç</a>'}<button id="bigClose">Kapat (Esc)</button></span></div>
+            <div class="bigbar"><span><b id="bigTitle"></b> <span id="bigFps" style="opacity:.75;font-size:12px;margin-left:6px"></span></span><span style="display:flex;gap:6px">${isResident() ? "" : '<a class="btn" id="bigRec">Kayıtları aç</a>'}<button id="bigLive">Canlı video</button><button id="bigClose">Kapat (Esc)</button></span></div>
           </div>
         </div>
-        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek). Bir kareye tıklayınca büyür; büyük görüntü saniyede ${BIG_MAX_FPS} kareye kadar sürekli yenilenir (gerçek hız NVR'ye ve kameranın bağlantısına bağlıdır), bu sırada küçük kareler bekler. ← → ile sayfa değişir. Ses ve akıcı video için NVR arayüzünü kullanın.</div>
+        <div class="hint" style="margin-top:6px">Kareler sırayla yenilenir (NVR'yi yormamak için aynı anda en fazla ${LIVE_MAX_INFLIGHT} istek). Bir kareye tıklayınca büyür; büyük görüntü saniyede ${BIG_MAX_FPS} kareye kadar sürekli yenilenir. <b>Canlı video</b> düğmesi RTSP'den gerçek akış açar (ffmpeg gerekir, gecikme ~1 sn); olmazsa anlık kareye döner. ← → ile sayfa değişir.</div>
       </div>`;
     $$("#liveSize [data-size]").forEach(b => b.onclick = () => {
       const first = this.pageCams()[0]?.channel;
@@ -1341,6 +1341,7 @@ PAGES.canli = {
     $("#livePrev").onclick = () => this.go(-1);
     $("#liveNext").onclick = () => this.go(1);
     $("#bigClose").onclick = e => { e.stopPropagation(); this.closeBig(); };
+    $("#bigLive").onclick = e => { e.stopPropagation(); this.toggleLive(); };
     $("#liveBig").onclick = e => { if (!e.target.closest(".bigbar")) this.closeBig(); };
     $("#liveFs").onclick = () => {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -1429,22 +1430,53 @@ PAGES.canli = {
   },
   openBig(ch) {
     const c = cams().find(x => x.channel === ch); if (!$("#liveBig")) return;
-    S.live.big = ch;
+    S.live.big = ch; S.live.live = false;
     $("#liveBig").style.display = "block";
     $("#bigTitle").textContent = (c ? c.name : "Kanal " + ch) + " · kanal " + ch;
     if ($("#bigRec")) $("#bigRec").href = "#/kayitlar?ch=" + ch;
+    const bl = $("#bigLive"); if (bl) bl.textContent = "Canlı video";
     const cur = $(`.ltile[data-ch="${ch}"] img`);
     $("#bigImg").src = cur ? cur.src : "";
     S.live.bigFrames = []; if ($("#bigFps")) $("#bigFps").textContent = "";
     this.refreshBig();
   },
-  closeBig() { const L = S.live; L.big = null; clearTimeout(L.bigTimer); L.bigWaiting = false; const b = $("#liveBig"); if (b) b.style.display = "none"; },
+  closeBig() {
+    const L = S.live; L.big = null; L.live = false; clearTimeout(L.bigTimer); L.bigWaiting = false;
+    const img = $("#bigImg"); if (img) { img.onerror = null; img.src = ""; }
+    const bl = $("#bigLive"); if (bl) bl.textContent = "Canlı video";
+    const b = $("#liveBig"); if (b) b.style.display = "none";
+  },
+  toggleLive() {
+    const L = S.live, ch = L.big; if (!ch) return;
+    const img = $("#bigImg"), btn = $("#bigLive"), fps = $("#bigFps");
+    if (L.live) {
+      L.live = false; clearTimeout(L.bigTimer); L.bigWaiting = false; L.bigBusy = false;
+      if (btn) btn.textContent = "Canlı video";
+      if (fps) fps.textContent = "";
+      if (img) { img.onerror = null; img.src = `/api/nvr/snapshot?ch=${ch}&t=${Date.now()}`; }
+      this.refreshBig();
+    } else {
+      L.live = true; clearTimeout(L.bigTimer); L.bigWaiting = false; L.bigBusy = false;
+      if (btn) btn.textContent = "Anlık kare";
+      if (fps) fps.textContent = "canlı video";
+      if (img) {
+        img.onerror = () => {
+          if (!L.live) return;
+          L.live = false;
+          if (btn) btn.textContent = "Canlı video";
+          if (fps) fps.textContent = "canlı video açılamadı";
+          this.refreshBig();
+        };
+        img.src = `/api/nvr/live?ch=${ch}&t=${Date.now()}`;
+      }
+    }
+  },
   /* Enlarged view: continuous snapshots. The next picture is requested as soon as the previous one has
      arrived (one request at a time, at most BIG_MAX_FPS per second), so a fast NVR gives a near-live
      picture and a slow camera simply gets fewer frames. The grid is paused meanwhile, so the NVR load
      stays about the same as the grid's. A 1.5 s watchdog in render() restarts the loop after a pause. */
   refreshBig() {
-    const L = S.live; if (!L.big || L.bigBusy || document.hidden || S.page !== "canli") return;
+    const L = S.live; if (!L.big || L.bigBusy || L.live || document.hidden || S.page !== "canli") return;
     clearTimeout(L.bigTimer); L.bigWaiting = false;
     L.bigBusy = true; const ch = L.big, t0 = performance.now();
     this.snap(ch, (ok, img) => {

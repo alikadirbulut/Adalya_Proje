@@ -53,7 +53,7 @@ On the router (`http://192.168.0.1`), **DHCP → Address Reservation**. Make sur
 | E0-2E-FE-67-BB-B1 | 192.168.0.115 | B Blok asansör giriş | ☐ |
 | E0-2E-FE-67-BB-B3 | **192.168.0.12** (not .151!) | Cblok | ☐ |
 | E0-2E-FE-67-B9-E5 | 192.168.0.14 | Kuzey çevre 2 | ☐ |
-| E0-2E-FE-36-12-69 | 192.168.0.23 | NVR | ☐ |
+| E0-2E-FE-36-12-69 | 192.168.0.254 | NVR | ☐ |
 
 - [ ] DHCP pool is still **192.168.0.150 – 192.168.0.200**.
 - [ ] Reboot **only** the cameras that are on a wrong IP (power-cycle or NVR channel menu), so they pick up their reserved address.
@@ -152,7 +152,7 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 - [ ] **Genel bakış**: the camera count matches step 1? ____
 
 ### 2.2 Connect the NVR
-- [ ] **Ayarlar → NVR bağlantısı**: `192.168.0.23`, user, password → **Bağlan**. Connected, model shown? ____
+- [ ] **Ayarlar → NVR bağlantısı**: `192.168.0.254`, user, password → **Bağlan**. Connected, model shown? ____
 - [ ] If it says the password was refused: the panel stopped on purpose (no lockout). Fix the password and press Bağlan once more.
 - [ ] Tip: create a separate view-only user on the NVR for the panel.
 
@@ -163,6 +163,8 @@ The AP (IP-Com iUAP-AC-M, ~4,470 TL) is **not decided yet**. This visit only col
 | Genel bakış | NVR disk shows a % (not "?") | ☐ | |
 | Canlı izleme | Tiles show pictures | ☐ | |
 | Canlı izleme | Click a tile → large view updates continuously; frame rate shown next to the name: ____ kare/sn (good camera) / ____ kare/sn (Güney çevre 1) | ☐ | |
+| Canlı video | Click a tile → **Canlı video** → real RTSP stream (no slideshow), ~1 s delay; which channels work: ____ | ☐ | ffmpeg installed? |
+| Canlı video | Open a second live camera; close both and check ffmpeg processes stop | ☐ | |
 | Kayıtlar | Güney çevre 1, today, **Kayıtları bul** → files listed | ☐ | |
 | Kayıtlar | **İndir** one file, open in Dahua SmartPlayer / VLC | ☐ | |
 | Olaylar ve loglar | **Logları getir** → NVR log lines | ☐ | |
@@ -179,7 +181,7 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
 
 1. [ ] **RTSP sub stream in VLC** (Media → Open Network Stream):
    ```
-   rtsp://<user>:<password>@192.168.0.23:554/cam/realmonitor?channel=3&subtype=1
+   rtsp://<user>:<password>@192.168.0.254:554/cam/realmonitor?channel=3&subtype=1
    ```
    Plays? ☐ yes ☐ no. Delay vs. reality (wave at the camera): ____ s. Same for channel 9: ☐ plays, delay ____ s.
    If it doesn't play, try `subtype=0` (main stream) and note the result: ____
@@ -196,7 +198,7 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
    Browsers play **H.264** reliably, H.265 only on some devices. Target: main stream H.265 (recording, saves Wi-Fi), **sub stream H.264**, about 640×360–704×576, 10–15 FPS, 256–512 kbps. Don't change it today unless asked; just note what is there and whether the sub stream codec can be set to H.264 (☐ yes ☐ no) and to MJPEG (☐ yes ☐ no).
 3. [ ] **MJPEG in a browser** (the browser asks for the NVR login):
    ```
-   http://192.168.0.23/cgi-bin/mjpg/video.cgi?channel=3&subtype=1
+   http://192.168.0.254/cgi-bin/mjpg/video.cgi?channel=3&subtype=1
    ```
    Moving picture? ☐ yes ☐ only one frame / error ☐ asks for login, then error. Message shown: ____________
 4. [ ] NVR → Network → Port: RTSP port is 554? ☐ (other: ____). Max. remote/online users setting: ____
@@ -227,3 +229,4 @@ Use the **view-only NVR user** from 2.2 for these tests, not the admin account. 
 - [ ] NVR BPS screenshot and firmware version
 - [ ] Router ISP, firmware, SNMP/remote management screenshot
 - [ ] Your AP decision notes (1.8)
+

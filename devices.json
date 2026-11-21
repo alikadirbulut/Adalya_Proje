@@ -1,8 +1,8 @@
 [
   {"name": "Router EX520v", "ip": "192.168.0.1", "mac": "50:3D:D1:41:A2:95", "type": "router", "ports": [80], "x": 6, "y": 63},
   {"name": "Switch RG-ES208GC", "ip": "192.168.0.16", "mac": "70:85:6C:87:B1:A4", "type": "switch", "ports": [80], "x": 9, "y": 65},
-  {"name": "NVR DHI-NVR4232-4KS3", "ip": "192.168.0.23", "mac": "E0:2E:FE:36:12:69", "type": "nvr", "ports": [80, 554, 37777], "x": 12, "y": 63},
-  {"name": "NVR second address", "ip": "192.168.0.254", "mac": "E0:2E:FE:36:12:69", "type": "nvr", "ports": [80], "hidden": true},
+  {"name": "NVR DHI-NVR4232-4KS3", "ip": "192.168.0.254", "mac": "E0:2E:FE:36:12:69", "type": "nvr", "ports": [80, 554, 37777], "x": 12, "y": 63},
+  {"name": "NVR old address", "ip": "192.168.0.23", "mac": "E0:2E:FE:36:12:69", "type": "nvr", "ports": [80], "hidden": true},
   {"name": "Tenda T10", "ip": "192.168.0.10", "mac": "", "type": "repeater", "ports": [80], "x": 45, "y": 40},
   {"name": "TP-Link TL-WA855RE", "ip": "192.168.0.17", "mac": "", "type": "repeater", "ports": [80], "x": 40, "y": 25},
   {"name": "Güvenlik", "ip": "192.168.0.100", "mac": "E0:2E:FE:67:B8:C3", "type": "camera", "channel": 3, "x": 8, "y": 58},

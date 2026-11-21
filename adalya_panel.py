@@ -25,6 +25,7 @@ import secrets
 import shutil
 import socket
 import sqlite3
+import subprocess
 import tempfile
 import threading
 import time
@@ -38,7 +39,7 @@ from urllib.parse import parse_qs, quote, urlparse
 import adalya_test as kit
 from nvr import TIME_FMT, TIME_RE, DemoNvr, Nvr, NvrAuthError, NvrError
 
-VERSION = "3.3"
+VERSION = "3.4"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEVICES = os.path.join(HERE, "devices.json")
 HTML_PATH = os.path.join(HERE, "panel.html")
@@ -113,6 +114,9 @@ SITE_DEFAULT = {
 
 lock = threading.Lock()
 devices, state, sessions, known_paths = [], {}, {}, set()
+LIVE_MAX = 4
+live_now = 0
+live_lock = threading.Lock()
 cfg = {}
 site = {}
 nvr = None
@@ -259,7 +263,7 @@ def load_cfg():
     if os.path.exists(CFG_PATH):
         with open(CFG_PATH, encoding="utf-8") as f:
             cfg = json.load(f)
-    cfg.setdefault("nvr_host", "192.168.0.23")
+    cfg.setdefault("nvr_host", "192.168.0.254")
     cfg.setdefault("nvr_user", "admin")
     users = cfg.setdefault("users", {})
     if "admin" in cfg and isinstance(cfg["admin"], dict) and "salt" in cfg["admin"]:
@@ -1044,7 +1048,7 @@ def r_nvr_connect(h, qs, user):
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        return h.json(400, {"error": "NVR adresi IP olmalı (ör. 192.168.0.23)"})
+        return h.json(400, {"error": "NVR adresi IP olmalı (ör. 192.168.0.254)"})
     if not ip.is_private:
         return h.json(400, {"error": "Sadece yerel ağdaki bir NVR'ye bağlanılabilir"})
     if not uname or not pw:
@@ -1076,6 +1080,77 @@ def r_snapshot(h, qs, user):
         return h.json(403, {"error": "Bu kameraya erişiminiz yok"})
     ctype, data = need_nvr().snapshot(ch)
     h.raw(200, data, ctype)
+
+
+def nvr_rtsp_url(ch, subtype=1):
+    """Build the NVR sub-stream URL in memory only; the password is never written to disk."""
+    if not nvr or getattr(nvr, "demo", False):
+        return None
+    host = getattr(nvr, "host", "")
+    user = getattr(nvr, "user", "")
+    pw = getattr(nvr, "password", "")
+    if not host or not user or not pw:
+        return None
+    return (f"rtsp://{quote(user, safe='')}:{quote(pw, safe='')}@{host}:554"
+            f"/cam/realmonitor?channel={int(ch)}&subtype={int(subtype)}")
+
+
+@route("GET", "/api/nvr/live", need="user")
+def r_live(h, qs, user):
+    """RTSP -> MJPEG stream for the enlarged view. One ffmpeg per viewer, capped."""
+    global live_now
+    ch = chparam(qs)
+    if not resident_can_watch(user, ch):
+        return h.json(403, {"error": "Bu kameraya erişiminiz yok"})
+    url = nvr_rtsp_url(ch)
+    ff = shutil.which("ffmpeg")
+    if not url:
+        return h.json(503, {"error": "Canlı video için önce NVR'ye bağlanın"})
+    if not ff:
+        return h.json(503, {"error": "Canlı video için ffmpeg gerekli (PATH'te bulunamadı)"})
+    with live_lock:
+        if live_now >= LIVE_MAX:
+            return h.json(503, {"error": f"Aynı anda en fazla {LIVE_MAX} canlı yayın açılabilir"})
+        live_now += 1
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            [ff, "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp",
+             "-i", url, "-an", "-vf", "fps=8,scale=960:-2", "-q:v", "6", "-f", "mjpeg", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        h.send_response(200)
+        h.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        h.send_header("Cache-Control", "no-store")
+        h.send_header("Connection", "close")
+        h.end_headers()
+        h.close_connection = True
+        buf = b""
+        while True:
+            chunk = proc.stdout.read(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while True:
+                a = buf.find(b"\xff\xd8")
+                b = buf.find(b"\xff\xd9", a + 2) if a >= 0 else -1
+                if a < 0 or b < 0:
+                    break
+                jpg = buf[a:b + 2]
+                buf = buf[b + 2:]
+                h.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                              + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+                h.wfile.flush()
+    except (BrokenPipeError, ConnectionResetError, OSError):
+        pass
+    finally:
+        if proc:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        with live_lock:
+            live_now = max(0, live_now - 1)
 
 
 @route("GET", "/api/nvr/records")
@@ -4791,7 +4866,7 @@ def main():
         nvr = DemoNvr(channel_names())
         nvr_state.update(info=nvr.info(), checked=time.time())
     elif args.nvr_user:
-        host = args.nvr_host or cfg.get("nvr_host", "192.168.0.23")
+        host = args.nvr_host or cfg.get("nvr_host", "192.168.0.254")
         pw = getpass.getpass(f"NVR password for {args.nvr_user}@{host} (not saved): ")
         client = Nvr(host, args.nvr_user, pw)
         try:

@@ -1,4 +1,4 @@
-﻿# Adalya — Site Test Day
+# Adalya — Site Test Day
 
 Everything here is read-only. Nothing changes a device. Results land in the `results` folder next to the script.
 
@@ -81,13 +81,14 @@ Demo checklist before the site day:
 - [ ] **Vardiya**: 4/6/8/10 wall, click a tile to enlarge; quick guest entry.
 - [ ] **Kayıt istekleri**: submit `/kayit` from the phone, approve on the PC, open the generated invite link.
 - [ ] **Mobil**: on a phone-width window as Yönetici/Güvenlik, the top bar opens the drawer, groups show badges, forms are full width, and tables scroll sideways.
+- [ ] **Canlı video**: click a tile → **Canlı video**; it should play the RTSP sub-stream (~1 s delay), not a slideshow. If it falls back to snapshots, check `ffmpeg -version` and the NVR password/connection.
 - [ ] **Nasıl kullanılır**: watch the video, check the biography and memorial dates.
 
 On site, live (opens http://127.0.0.1:8080 in the browser):
 ```
 python adalya_panel.py
 ```
-The first live start shows a setup screen: enter your name and pick an admin password (8+ characters). Then connect the NVR from **Ayarlar → NVR bağlantısı** (address 192.168.0.23, user, password). The NVR password is never saved; enter it again after each restart, or start with:
+The first live start shows a setup screen: enter your name and pick an admin password (8+ characters). Then connect the NVR from **Ayarlar → NVR bağlantısı** (address 192.168.0.254, user, password). The NVR password is never saved; enter it again after each restart, or start with:
 ```
 python adalya_panel.py --nvr-user admin
 ```
@@ -116,4 +117,5 @@ On the day:
 - [ ] SNMP results (copy from the screen)
 - [ ] Router: ISP name, firmware version, screenshot of SNMP / remote management settings
 - [ ] NVR: Info → BPS screenshot (live bitrate per channel)
+
 

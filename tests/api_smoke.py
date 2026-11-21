@@ -150,6 +150,7 @@ check("resident snapshot allowed camera", call("/api/nvr/snapshot?ch=8", "reside
 check("resident snapshot other camera refused", call("/api/nvr/snapshot?ch=9", "resident")[0] == 403)
 check("resident cannot search recordings", call("/api/nvr/records?ch=8&start=2026-11-18%2000:00:00&end=2026-11-18%2023:59:59", "resident")[0] == 403)
 check("per-flat override", call("/api/cam-access/flat", "admin", {"flat_id": 1, "channels": [9]})[0] == 200)
+check("live video requires a real NVR", call("/api/nvr/live?ch=9", "resident")[0] == 503)
 check("override applies", call("/api/nvr/snapshot?ch=9", "resident")[0] == 200 and call("/api/nvr/snapshot?ch=8", "resident")[0] == 403)
 call("/api/cam-access/flat", "admin", {"flat_id": 1, "channels": None})
 c, ca = call("/api/cam-access")

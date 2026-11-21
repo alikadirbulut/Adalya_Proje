@@ -1,6 +1,11 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to Adalya Paneli. Dates are 2026; the panel is a personal, local-only project.
+
+## 3.4 — 21 November 2026
+- **Live RTSP video** in the enlarged camera view: the panel opens the NVR sub-stream (`/cam/realmonitor?channel=N&subtype=1`) with **ffmpeg** and streams MJPEG to the browser (8 fps, 960 px wide, ~1 s delay). Max **4 simultaneous** live streams; resident camera permissions are enforced; it falls back to snapshots if ffmpeg/NVR fails.
+- NVR address corrected to **192.168.0.254** (DHI-NVR4232-4KS3, 32 channels; `.23` is the old address). Live video needs ffmpeg installed on the panel PC; snapshots work without it.
+- 210 API checks.
 
 ## 3.3 — 21 November 2026
 - **Camera frames doubled** (not more): enlarged view up to **8 snapshots/s** (NVR-limited, one request at a time), grid scheduler ~2.8 requests/s with 2 in flight, Vardiya wall every 2 s and its enlarged view every 450 ms.
